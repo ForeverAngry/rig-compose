@@ -4,7 +4,7 @@
 //! (and any rig-shaped tool surface): stateless skills, transport-agnostic
 //! tools, registry-driven agents, and a signal-routing coordinator.
 //!
-//! Originally extracted from [Azreal](https://github.com/ForeverAngry/azreal)'s
+//! Originally extracted from [Azrael](https://github.com/ForeverAngry/azrael)'s
 //! threat-detection kernel, this crate is now domain-neutral and can wrap
 //! any tool/agent stack.
 //!

@@ -82,7 +82,7 @@ impl Agent for CoordinatorAgent {
     }
     async fn step(&self, ctx: &mut InvestigationContext) -> Result<AgentStepResult, KernelError> {
         let span = tracing::debug_span!(
-            "azreal.coordinator.route",
+            "rig_compose.coordinator.route",
             entity = %ctx.entity_id,
             signals = ctx.signals.len(),
         );
