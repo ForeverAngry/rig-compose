@@ -1,0 +1,29 @@
+[package]
+name = "rig-compose"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Azreal Contributors"]
+description = "Composable agent kernel: stateless skills, transport-agnostic tools, registry-driven agents, signal-routing coordinator. Companion crate for rig."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ForeverAngry/rig-compose"
+readme = "README.md"
+keywords = ["rig", "agent", "skill", "tool", "ai"]
+categories = ["asynchronous"]
+
+[features]
+default = []
+manifest = ["dep:serde_yaml"]
+
+[dependencies]
+async-trait = "0.1"
+dashmap = "6.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = { version = "0.9", optional = true }
+thiserror = "1.0"
+tracing = "0.1"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "sync"] }
