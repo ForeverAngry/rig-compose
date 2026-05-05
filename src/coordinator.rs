@@ -1,5 +1,13 @@
-//! [`CoordinatorAgent`] — routes an investigation to the first
-//! registered specialist whose signal tag matches the context.
+//! [`CoordinatorAgent`] — **deterministic** signal-tag router. Routes
+//! an investigation to the first registered specialist whose signal tag
+//! matches the context, with no model in the loop.
+//!
+//! This is the *optional* delegation path. For autonomous agent-to-agent
+//! collaboration where the parent's LLM should choose its peer, use
+//! [`crate::delegate::DelegateTool`] instead. Reach for the coordinator
+//! only when the routing topology is fixed and a free, no-LLM dispatch
+//! hop is the point — for example, an overseer fanning one specialist
+//! out per partition before any model has loaded.
 //!
 //! The coordinator is itself an [`Agent`] so workflows can dispatch to it
 //! uniformly. It owns no skills of its own; on `step` it inspects

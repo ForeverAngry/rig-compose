@@ -1,10 +1,20 @@
-//! Agent delegation primitives.
+//! Agent delegation primitives — **the default path for agent-to-agent
+//! collaboration.**
 //!
 //! A delegate is another agent-shaped capability exposed as a normal
-//! [`Tool`]. The model still decides when to call it; the runtime merely
-//! provides an implementation. This keeps delegation agentic while allowing
-//! hosts to run child agents in the same process when that is cheaper than
-//! MCP or another remote transport.
+//! [`Tool`]. The parent agent's model still decides when to call it;
+//! the runtime merely provides an implementation. This keeps delegation
+//! agentic while letting hosts run child agents in-process when that is
+//! cheaper than MCP or another remote transport.
+//!
+//! Because the surface is [`Tool`], delegation is symmetric across
+//! transports: a child agent registered in-process today can be moved
+//! behind an MCP server tomorrow with no change to the parent — the
+//! parent emits the same tool call.
+//!
+//! For deterministic, no-LLM routing by signal tag (e.g. an overseer
+//! fanning one specialist out per partition), see
+//! [`crate::coordinator::CoordinatorAgent`] instead.
 
 use std::sync::Arc;
 

@@ -15,12 +15,41 @@
 //!    tell them apart.
 //! 3. [`Agent`] holds a slice of the global registries — it never
 //!    hard-codes skill or tool names.
-//! 4. [`Workflow`] composes agents. The [`CoordinatorAgent`] is one
-//!    workflow primitive; specialist routing is another configuration of it.
+//! 4. [`Workflow`] composes agents.
+//!
+//! ## Two paths for agent-to-agent delegation
+//!
+//! rig-compose ships **two complementary delegation primitives**. Pick
+//! the one that matches who should decide *when* a peer agent is invoked.
+//!
+//! **Default — [`delegate::DelegateTool`] (model-driven, agentic).**
+//! A child agent is exposed as a normal [`Tool`]. The parent agent's
+//! model decides when to call it, just like any other tool. This is the
+//! recommended path for autonomous agent-to-agent collaboration, because
+//! the topology stays open and transport-symmetric: the same tool call
+//! works whether the peer runs in-process via
+//! [`delegate::InProcessAgentDelegate`] or behind an MCP server via
+//! `rig_mcp::McpTool`.
+//!
+//! **Optional — [`coordinator::CoordinatorAgent`] (deterministic, host-driven).**
+//! A signal-tag router that hops to the first matching specialist with
+//! no model in the loop. Reach for it only when the routing topology is
+//! fixed up-front and you specifically want a free dispatch hop —
+//! typical use is an overseer that fans one specialist out per partition
+//! before any LLM has loaded. Not a substitute for `DelegateTool` when
+//! you want the *agents* to choose how they cooperate.
 
 pub mod agent;
 pub mod context;
+/// Deterministic, no-LLM signal-tag router. See the crate-level
+/// "Two paths for agent-to-agent delegation" section: prefer
+/// [`delegate::DelegateTool`] for model-driven peer collaboration and
+/// reach for [`coordinator::CoordinatorAgent`] only when the topology
+/// is fixed and a free dispatch hop matters.
 pub mod coordinator;
+/// Model-driven, transport-agnostic agent delegation. The default path
+/// for autonomous agent-to-agent collaboration. See the crate-level
+/// "Two paths for agent-to-agent delegation" section.
 pub mod delegate;
 pub mod instructions;
 #[cfg(feature = "manifest")]
