@@ -9,6 +9,12 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/ForeverAngry/rig-compose/compare/v0.1.1...v0.1.2) - 2026-05-05
+
+### Fixed
+
+- Clarify deterministic vs model-driven delegation paths
+
 ## [0.1.1](https://github.com/ForeverAngry/rig-compose/compare/v0.1.0...v0.1.1) - 2026-05-04
 
 ### Fixed
