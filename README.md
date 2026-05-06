@@ -1,103 +1,162 @@
 # rig-compose
 
-**Composable agent kernel for [Rig](https://github.com/0xPlaygrounds/rig)-shaped systems.**
+Composable agent kernel: stateless skills, transport-agnostic tools, registry-driven agents, signal-routing coordinator. Companion crate for rig.
 
 [![crates.io](https://img.shields.io/crates/v/rig-compose.svg)](https://crates.io/crates/rig-compose)
 [![docs.rs](https://img.shields.io/docsrs/rig-compose)](https://docs.rs/rig-compose)
-[![license](https://img.shields.io/crates/l/rig-compose.svg)](./LICENSE-MIT)
+[![license](https://img.shields.io/crates/l/rig-compose.svg)](LICENSE-MIT)
 
----
+## Overview
 
-Composable agent kernel for [rig](https://github.com/0xplaygrounds/rig).
+`rig-compose` is a domain-neutral composition layer for Rig-shaped agent systems. It provides the kernel traits and data structures for stateless skills, side-effectful tools, shared registries, generic agents, deterministic signal routing, workflows, in-process agent delegation, and optional YAML manifest loading.
 
-- **Stateless `Skill`** trait — assignable to any agent.
-- **Transport-agnostic `Tool`** trait — local closures or remote MCP servers
-  (via the companion `rig-mcp` crate) look identical at the call site.
-- **Registry-driven `Agent`** — `GenericAgent::builder()` with declarative
-  skill chains and per-agent tool whitelisting via `ToolRegistry::scoped`.
-- **Signal-routing `CoordinatorAgent`** — first-match `RoutingRule`s with
-  optional fallback.
+The crate does not call an LLM itself and does not depend on `rig-core`; instead it defines the small tool and skill surfaces that companion crates such as `rig-mcp` and `rig-resources` plug into.
 
-Originally extracted from [Azreal](https://github.com/ForeverAngry/rig-compose).
+## Why it exists
 
-## Install
+Rig supplies provider-agnostic model, embedding, vector-store, and tool traits. `rig-compose` fills a different gap: it organizes domain skills and tools into repeatable agent workflows without forcing those workflows to know whether a tool is local, delegated to another in-process agent, or surfaced through MCP.
 
-```toml
-[dependencies]
-rig-compose = "0.1"
-```
+This keeps downstream systems from reimplementing the same coordination pieces: `Skill`, `Tool`, `ToolRegistry`, `SkillRegistry`, `GenericAgent`, `CoordinatorAgent`, `DelegateTool`, and the budget guards used to meter finite work.
 
-Enable manifest loading when you want the portable agent manifest schema:
+## Status
 
-```toml
-[dependencies]
-rig-compose = { version = "0.1", features = ["manifest"] }
-```
+- Crate version: `0.1.2`.
+- Rust edition: 2024.
+- MSRV: 1.88.
+- Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
+- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, and `KernelError::ToolNotApplicable` for soft tool failures.
 
-## Quickstart
+## Feature flags
+
+| Feature | Default | Enables | Checked by `just check` |
+| --- | --- | --- | --- |
+| none | yes | Core agent, skill, tool, registry, workflow, delegate, coordinator, context, instruction, and budget APIs. | `cargo clippy --all-targets`, `cargo test --all-targets` |
+| `manifest` | no | YAML-backed portable agent manifest types and materialization helpers from [src/manifest.rs](src/manifest.rs). Pulls `serde_yaml`. | `cargo clippy --all-targets --features manifest`, `cargo test --all-targets --features manifest`, docs and examples with all features |
+
+## Key Types
+
+- [src/skill.rs](src/skill.rs): `Skill`, `SkillId`, and `SkillOutcome`. Skills are stateless and decide whether they apply to an `InvestigationContext`.
+- [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, and `LocalTool`. Tools are the side-effectful async boundary.
+- [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views.
+- [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context.
+- [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction`. This is the shared state that skills read and enrich.
+- [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
+- [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
+- [src/budget.rs](src/budget.rs): `BudgetGuard`, `TokenBudget`, `AtomicBudget`, `AtomicTokenBudget`, `TokenReservation`, `TokenRefund`, and `BudgetError`. These meter rows, dispatch slots, and prompt-token reservations.
+- [src/workflow.rs](src/workflow.rs): `Workflow`, the async workflow composition trait.
+- [src/instructions.rs](src/instructions.rs): `Instructions`, a serializable instruction bundle with examples, response schema, and metadata.
+- [src/manifest.rs](src/manifest.rs): `AgentManifest`, `ModelSpec`, `ToolSpec`, `DelegateSpec`, and materialization helpers, gated behind `manifest`.
+
+The crate-level architecture rule is simple: `Skill` is pure decision logic, `Tool` is the side-effect boundary, registries own lookup, and agents compose registered pieces without hard-coding concrete implementations.
+
+## Integration With Rig
+
+`rig-compose` does not pin `rig-core` in [Cargo.toml](Cargo.toml). It is intentionally Rig-shaped rather than Rig-bound: other crates can adapt Rig tools, MCP tools, local closures, or in-process delegates into the same `Tool` and `Skill` flow.
+
+The main companion integration points are:
+
+- `rig-mcp` implements remote MCP access by adapting MCP endpoints into `rig_compose::Tool` values.
+- `rig-resources` provides reusable skills and tools that implement `rig-compose` traits.
+- Downstream systems such as Azrael can use `BudgetGuard` and `TokenBudget` to enforce compute budgets around agent dispatch and LLM token use.
+
+## Usage
+
+The minimal runnable example is [examples/basic_agent.rs](examples/basic_agent.rs). It registers one stateless skill, builds a `GenericAgent`, and runs that agent against an `InvestigationContext`.
 
 ```rust,no_run
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use rig_compose::{
-  Agent, GenericAgent, InvestigationContext, KernelError, Skill, SkillOutcome,
-  SkillRegistry, ToolRegistry,
+    Agent, GenericAgent, InvestigationContext, KernelError, Skill, SkillOutcome, SkillRegistry,
+    ToolRegistry,
 };
 
 struct KeywordSkill;
 
 #[async_trait]
 impl Skill for KeywordSkill {
-  fn id(&self) -> &str {
-    "example.keyword"
-  }
+    fn id(&self) -> &str {
+        "example.keyword"
+    }
 
-  fn applies(&self, context: &InvestigationContext) -> bool {
-    context.has_signal("keyword.match")
-  }
+    fn applies(&self, context: &InvestigationContext) -> bool {
+        context.has_signal("keyword.match")
+    }
 
-  async fn execute(
-    &self,
-    _context: &mut InvestigationContext,
-    _tools: &ToolRegistry,
-  ) -> Result<SkillOutcome, KernelError> {
-    Ok(SkillOutcome::default().with_delta(0.25))
-  }
+    async fn execute(
+        &self,
+        _context: &mut InvestigationContext,
+        _tools: &ToolRegistry,
+    ) -> Result<SkillOutcome, KernelError> {
+        Ok(SkillOutcome::default().with_delta(0.25))
+    }
 }
 
 # async fn run() -> Result<(), KernelError> {
 let skills = SkillRegistry::new();
-skills.register(std::sync::Arc::new(KeywordSkill));
+skills.register(Arc::new(KeywordSkill));
 
 let tools = ToolRegistry::new();
 let agent = GenericAgent::builder("triage")
-  .with_skills(["example.keyword"])
-  .build(&skills, &tools)?;
+    .with_skills(["example.keyword"])
+    .build(&skills, &tools)?;
 
 let mut context = InvestigationContext::new("entity-1", "default")
-  .with_signal("keyword.match");
+    .with_signal("keyword.match");
 let result = agent.step(&mut context).await?;
 
 assert_eq!(result.skills_run, vec!["example.keyword".to_string()]);
 # Ok(()) }
 ```
 
-See [examples/basic_agent.rs](examples/basic_agent.rs) for a compiling version.
+The budget behavior is covered by the unit tests in [src/budget.rs](src/budget.rs), including reservation reconciliation and drop-time refunds.
 
-## Features
+## Validation
 
-| Feature | Default | Description |
-| ------- | :-----: | ----------- |
-| `manifest` | - | Enables serde-yaml backed portable agent manifests. |
+Canonical validation is `just check`.
 
-## Compatibility
+That recipe runs formatter checks, clippy and tests for default features and `manifest`, rustdoc with `-D warnings -D rustdoc::broken_intra_doc_links`, and `cargo build --examples --all-features`.
 
-`rig-compose` targets Rust 2024 and has MSRV 1.88.
+## Gotchas
+
+- `DelegateTool` and `CoordinatorAgent` solve different routing problems. Use `DelegateTool` when the model should decide whether to call another agent; use `CoordinatorAgent` for fixed host-driven signal routing.
+- `KernelError::ToolNotApplicable` is a soft failure for tools that cannot apply to the current context. Callers may treat it as a no-op, as `rig-resources` does for missing graph entities.
+- `TokenReservation` refunds its estimate on drop unless `AtomicTokenBudget::record_usage` disarms it. Keep the handle alive until actual usage is recorded.
+- The library is runtime-agnostic. Do not add runtime dependencies to `[dependencies]`; tests and examples use `tokio` from `[dev-dependencies]`.
+
+## Ecosystem
+
+These companion crates are maintained as separate repositories. Together they form a small stack around the upstream Rig project: `rig-compose` provides the kernel surface, `rig-resources` contributes reusable skills and tools, `rig-mcp` moves tools across MCP, `rig-memvid` connects Rig agents to persistent `.mv2` memory, and `rig-ballista` reserves the metadata-catalog seam for future query-engine integration.
+
+```mermaid
+flowchart TD
+    rig["rig / rig-core"]
+    compose["rig-compose 0.1.x"]
+    resources["rig-resources 0.1.x"]
+    mcp["rig-mcp 0.1.x"]
+    memvid["rig-memvid 0.1.x"]
+    ballista["rig-ballista 0.1.x"]
+
+    compose -. "Rig-shaped kernel; no direct rig-core dep" .-> rig
+    resources -- "rig-compose = 0.1; features: security, graph, full" --> compose
+    mcp -- "rig-compose = 0.1; rmcp stdio bridge" --> compose
+    memvid -- "rig-core = 0.36.0; features: lex, vec, api_embed, temporal, encryption" --> rig
+    ballista -. "planned rig-compose catalog integration; no direct dep today" .-> compose
+```
+
+Pinned Rig-facing dependencies from the current manifests:
+
+| Crate | Direct Rig-facing dependency | Notes |
+| --- | --- | --- |
+| `rig-compose` | none | Defines a Rig-shaped kernel surface without depending on `rig-core`. |
+| `rig-resources` | `rig-compose = 0.1` | Uses a sibling path during local workspace development. |
+| `rig-mcp` | `rig-compose = 0.1` | Uses a sibling path during local workspace development. |
+| `rig-memvid` | `rig-core = 0.36.0` | Implements Rig vector-store and prompt-hook flows over Memvid. |
+| `rig-ballista` | none today | Ballista/Iceberg/DataFusion dependencies remain planned and commented out. |
+
+The concrete multi-crate workflow tested today is the MCP loopback path: a `rig_compose::ToolRegistry` is exposed through `rig_mcp::LoopbackTransport`, remote schemas are wrapped as `rig_mcp::McpTool`, and the wrapped tools are registered back into another `ToolRegistry`. That proves a local `rig-compose` tool and an MCP-adapted tool are indistinguishable to callers. The backing test is `mcp_tool_indistinguishable_from_local` in [rig-mcp/src/transport.rs](https://github.com/ForeverAngry/rig-mcp/blob/main/src/transport.rs).
 
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
+Licensed under either Apache-2.0 or MIT, at your option.

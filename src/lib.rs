@@ -40,6 +40,7 @@
 //! you want the *agents* to choose how they cooperate.
 
 pub mod agent;
+pub mod budget;
 pub mod context;
 /// Deterministic, no-LLM signal-tag router. See the crate-level
 /// "Two paths for agent-to-agent delegation" section: prefer
@@ -60,6 +61,10 @@ pub mod tool;
 pub mod workflow;
 
 pub use agent::{Agent, AgentId, AgentStepResult, GenericAgent, GenericAgentBuilder};
+pub use budget::{
+    AtomicBudget, AtomicTokenBudget, BudgetError, BudgetGuard, TokenBudget, TokenRefund,
+    TokenReservation,
+};
 pub use context::{Evidence, InvestigationContext, NextAction, Signal};
 pub use coordinator::{CoordinatorAgent, CoordinatorBuilder, RoutingRule};
 pub use delegate::{

@@ -26,6 +26,13 @@ pub enum KernelError {
     #[error("tool invocation failed: {0}")]
     ToolFailed(String),
 
+    /// Soft failure: the tool ran without infrastructure error but the
+    /// requested operation was inapplicable to its current state (e.g.
+    /// expanding around an entity the graph has never seen). Callers
+    /// can treat this as a no-op rather than propagating an error.
+    #[error("tool not applicable: {0}")]
+    ToolNotApplicable(String),
+
     #[error("skill execution failed: {0}")]
     SkillFailed(String),
 
