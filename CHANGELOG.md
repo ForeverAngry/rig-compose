@@ -20,7 +20,8 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 - `budget` module: `BudgetGuard` and `TokenBudget` traits with lock-free
   `AtomicBudget` and `AtomicTokenBudget` reference implementations for
   cost-bounded coordination (rows, dispatch slots, LLM tokens). Lifted
-  from Azrael so any rig-compose agent can gate work on a finite pool.
+  from threat-detection agent work so any rig-compose agent can gate work on a
+  finite pool.
 - `TokenReservation` handle returned by `TokenBudget::try_reserve_tokens`,
   so `AtomicTokenBudget::record_usage` reconciles actual usage against one
   prompt's reservation instead of a global outstanding-token counter.

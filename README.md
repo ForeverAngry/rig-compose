@@ -57,7 +57,7 @@ The main companion integration points are:
 
 - `rig-mcp` implements remote MCP access by adapting MCP endpoints into `rig_compose::Tool` values.
 - `rig-resources` provides reusable skills and tools that implement `rig-compose` traits.
-- Downstream systems such as Azrael can use `BudgetGuard` and `TokenBudget` to enforce compute budgets around agent dispatch and LLM token use.
+- Downstream systems can use `BudgetGuard` and `TokenBudget` to enforce compute budgets around agent dispatch and LLM token use.
 
 ## Usage
 
@@ -127,7 +127,7 @@ That recipe runs formatter checks, clippy and tests for default features and `ma
 
 ## Ecosystem
 
-These companion crates are maintained as separate repositories. Together they form a small stack around the upstream Rig project: `rig-compose` provides the kernel surface, `rig-resources` contributes reusable skills and tools, `rig-mcp` moves tools across MCP, `rig-memvid` connects Rig agents to persistent `.mv2` memory, and `rig-ballista` reserves the metadata-catalog seam for future query-engine integration.
+These companion crates are maintained as separate repositories. Together they form a small stack around the upstream Rig project: `rig-compose` provides the kernel surface, `rig-resources` contributes reusable skills and tools, `rig-mcp` moves tools across MCP, and `rig-memvid` connects Rig agents to persistent `.mv2` memory.
 
 ```mermaid
 flowchart TD
@@ -136,13 +136,11 @@ flowchart TD
     resources["rig-resources 0.1.x"]
     mcp["rig-mcp 0.1.x"]
     memvid["rig-memvid 0.1.x"]
-    ballista["rig-ballista 0.1.x"]
 
     compose -. "Rig-shaped kernel; no direct rig-core dep" .-> rig
-    resources -- "rig-compose = 0.1; features: security, graph, full" --> compose
-    mcp -- "rig-compose = 0.1; rmcp stdio bridge" --> compose
+    resources -- "rig-compose = 0.2; features: security, graph, full" --> compose
+    mcp -- "rig-compose = 0.2; rmcp stdio bridge" --> compose
     memvid -- "rig-core = 0.36.0; features: lex, vec, api_embed, temporal, encryption" --> rig
-    ballista -. "planned rig-compose catalog integration; no direct dep today" .-> compose
 ```
 
 Pinned Rig-facing dependencies from the current manifests:
@@ -150,10 +148,9 @@ Pinned Rig-facing dependencies from the current manifests:
 | Crate | Direct Rig-facing dependency | Notes |
 | --- | --- | --- |
 | `rig-compose` | none | Defines a Rig-shaped kernel surface without depending on `rig-core`. |
-| `rig-resources` | `rig-compose = 0.1` | Uses a sibling path during local workspace development. |
-| `rig-mcp` | `rig-compose = 0.1` | Uses a sibling path during local workspace development. |
+| `rig-resources` | `rig-compose = 0.2` | Provides reusable skills, resource tools, and security helpers. |
+| `rig-mcp` | `rig-compose = 0.2` | Bridges `rig-compose` tools over MCP stdio and loopback transports. |
 | `rig-memvid` | `rig-core = 0.36.0` | Implements Rig vector-store and prompt-hook flows over Memvid. |
-| `rig-ballista` | none today | Ballista/Iceberg/DataFusion dependencies remain planned and commented out. |
 
 The concrete multi-crate workflow tested today is the MCP loopback path: a `rig_compose::ToolRegistry` is exposed through `rig_mcp::LoopbackTransport`, remote schemas are wrapped as `rig_mcp::McpTool`, and the wrapped tools are registered back into another `ToolRegistry`. That proves a local `rig-compose` tool and an MCP-adapted tool are indistinguishable to callers. The backing test is `mcp_tool_indistinguishable_from_local` in [rig-mcp/src/transport.rs](https://github.com/ForeverAngry/rig-mcp/blob/main/src/transport.rs).
 

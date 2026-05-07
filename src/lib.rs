@@ -4,9 +4,8 @@
 //! (and any rig-shaped tool surface): stateless skills, transport-agnostic
 //! tools, registry-driven agents, and a signal-routing coordinator.
 //!
-//! Originally extracted from [Azrael](https://github.com/ForeverAngry/azrael)'s
-//! threat-detection kernel, this crate is now domain-neutral and can wrap
-//! any tool/agent stack.
+//! Extracted from a threat-detection kernel, this crate is now domain-neutral
+//! and can wrap any tool/agent stack.
 //!
 //! ## Composability rules
 //! 1. [`Skill`] is stateless. Any skill can be assigned to any [`Agent`].

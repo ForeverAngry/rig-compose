@@ -13,8 +13,7 @@ The specific gap in Rig (or in `rig-compose`) that this crate fills. Cite
 the trait or pattern it plugs into (e.g. "implements `VectorStoreIndex`").
 
 ## Status
-Mirror the crate's `Cargo.toml` version + any "scaffolding"/"placeholder"
-notes from `AGENTS.md` (e.g. `rig-ballista` is explicitly placeholder).
+Mirror the crate's `Cargo.toml` version + any status notes from `AGENTS.md`.
 
 ## Feature flags
 Table copied from `Cargo.toml [features]` with one-line descriptions.
@@ -54,7 +53,7 @@ Before writing a unified README, ASK the user where it should land:
 
   1. As a new "## Ecosystem" section appended to each crate's README
      (duplicated, identical text).
-  2. As a section in `azrael/README.md` (the downstream consumer).
+  2. As a section in a top-level workspace README.
   3. Skip — link each README to a single canonical source instead.
 
 Do NOT pick unilaterally. If the user picks (1) or (2), the section MUST
