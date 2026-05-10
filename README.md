@@ -24,7 +24,7 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
-- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, and `KernelError::ToolNotApplicable` for soft tool failures.
+- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, and provider-neutral tool-call normalization/dispatch helpers.
 
 ## Feature flags
 
@@ -43,6 +43,7 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 - [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
 - [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
 - [src/budget.rs](src/budget.rs): `BudgetGuard`, `TokenBudget`, `AtomicBudget`, `AtomicTokenBudget`, `TokenReservation`, `TokenRefund`, and `BudgetError`. These meter rows, dispatch slots, and prompt-token reservations.
+- [src/normalizer.rs](src/normalizer.rs): `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`, `ToolInvocation`, and `dispatch_tool_invocations`. These normalize LFM/MLX text markers, OpenAI Responses `function_call` output, and OpenAI Chat Completions `tool_calls` into the same dispatchable shape.
 - [src/workflow.rs](src/workflow.rs): `Workflow`, the async workflow composition trait.
 - [src/instructions.rs](src/instructions.rs): `Instructions`, a serializable instruction bundle with examples, response schema, and metadata.
 - [src/manifest.rs](src/manifest.rs): `AgentManifest`, `ModelSpec`, `ToolSpec`, `DelegateSpec`, and materialization helpers, gated behind `manifest`.
@@ -111,6 +112,28 @@ assert_eq!(result.skills_run, vec!["example.keyword".to_string()]);
 ```
 
 The budget behavior is covered by the unit tests in [src/budget.rs](src/budget.rs), including reservation reconciliation and drop-time refunds.
+
+## Tool-Call Normalization
+
+Local OpenAI-compatible servers sometimes emit tool intent as text instead of
+provider-native structured tool calls. `rig-compose` normalizes both paths into
+one kernel shape:
+
+```text
+raw model output or provider JSON
+    -> ToolInvocation { name, args }
+    -> ToolRegistry
+    -> tool result
+```
+
+Supported normalizers today:
+
+- `LfmNormalizer`: parses LiquidAI LFM markers such as `<|tool_call_start|>[get_weather(city='Berlin')]<|tool_call_end|>`.
+- `StructuredToolCallNormalizer::normalize_openai_responses`: parses OpenAI Responses `function_call` output items or full response objects.
+- `StructuredToolCallNormalizer::normalize_openai_chat_completions`: parses OpenAI Chat Completions `tool_calls` or full chat completion responses.
+
+All of these produce `ToolInvocation` values that can be dispatched through
+`dispatch_tool_invocations(&ToolRegistry, &[ToolInvocation])`.
 
 ## Validation
 

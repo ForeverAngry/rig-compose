@@ -9,6 +9,18 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add provider-neutral tool-call normalization and dispatch helpers:
+  `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`,
+  `ToolInvocation`, `ToolInvocationResult`, and
+  `dispatch_tool_invocations`.
+- Support LiquidAI LFM/MLX textual tool-call markers, OpenAI Responses
+  `function_call` output items, and OpenAI Chat Completions `tool_calls` as
+  standard inputs that normalize into the same `ToolInvocation` shape.
+- Add `KernelError::NormalizerFailed(String)` for parse/normalization failures
+  that are distinct from tool invocation failures.
+
 ## [0.2.1](https://github.com/ForeverAngry/rig-compose/compare/v0.2.0...v0.2.1) - 2026-05-07
 
 ### Documentation

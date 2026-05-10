@@ -54,6 +54,9 @@ pub mod delegate;
 pub mod instructions;
 #[cfg(feature = "manifest")]
 pub mod manifest;
+/// Tool-call normalizer: converts raw model text output (in-band markers)
+/// into structured [`normalizer::ToolInvocation`]s for kernel dispatch.
+pub mod normalizer;
 pub mod registry;
 pub mod skill;
 pub mod tool;
@@ -75,6 +78,10 @@ pub use manifest::{
     AgentManifest, DelegateKind, DelegateSpec, InstructionsSpec, KnowledgeSpec, ManifestError,
     McpServerSpec, ModelSpec, ToolSpec, delegate_stub, materialize_local_and_delegate_tools,
     materialize_local_and_delegate_tools_with_delegates,
+};
+pub use normalizer::{
+    LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer, ToolInvocation,
+    ToolInvocationResult, dispatch_tool_invocations,
 };
 pub use registry::{KernelError, SkillRegistry, ToolRegistry};
 pub use skill::{Skill, SkillId, SkillOutcome};
