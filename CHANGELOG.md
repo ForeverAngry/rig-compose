@@ -9,6 +9,12 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/ForeverAngry/rig-compose/compare/v0.2.0...v0.2.1) - 2026-05-07
+
+### Documentation
+
+- Remove retired repo references
+
 ## [0.2.0](https://github.com/ForeverAngry/rig-compose/compare/v0.1.2...v0.2.0) - 2026-05-06
 
 ### Added
