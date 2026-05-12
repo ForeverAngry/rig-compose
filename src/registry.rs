@@ -45,6 +45,14 @@ pub enum KernelError {
     #[error("tool-call normalizer failed: {0}")]
     NormalizerFailed(String),
 
+    /// A dispatch hook intentionally stopped a normalized tool dispatch loop.
+    #[error("tool dispatch terminated: {0}")]
+    ToolDispatchTerminated(String),
+
+    /// A budget or accounting hook failed while evaluating dispatch policy.
+    #[error("budget failed: {0}")]
+    BudgetFailed(String),
+
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }

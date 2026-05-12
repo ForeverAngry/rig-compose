@@ -64,10 +64,13 @@ pub mod workflow;
 
 pub use agent::{Agent, AgentId, AgentStepResult, GenericAgent, GenericAgentBuilder};
 pub use budget::{
-    AtomicBudget, AtomicTokenBudget, BudgetError, BudgetGuard, TokenBudget, TokenRefund,
-    TokenReservation,
+    AtomicBudget, AtomicTokenBudget, BudgetError, BudgetGuard, DispatchBudgetHook, TokenBudget,
+    TokenRefund, TokenReservation,
 };
-pub use context::{Evidence, InvestigationContext, NextAction, Signal};
+pub use context::{
+    ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextSourceKind,
+    Evidence, InvestigationContext, NextAction, OmittedContextItem, Signal,
+};
 pub use coordinator::{CoordinatorAgent, CoordinatorBuilder, RoutingRule};
 pub use delegate::{
     DelegateExecutor, DelegateName, DelegateRegistry, DelegateTool, InProcessAgentDelegate,
@@ -80,8 +83,9 @@ pub use manifest::{
     materialize_local_and_delegate_tools_with_delegates,
 };
 pub use normalizer::{
-    LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer, ToolInvocation,
-    ToolInvocationResult, dispatch_tool_invocations,
+    LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer, ToolDispatchAction,
+    ToolDispatchHook, ToolInvocation, ToolInvocationResult, dispatch_tool_invocations,
+    dispatch_tool_invocations_with_hooks,
 };
 pub use registry::{KernelError, SkillRegistry, ToolRegistry};
 pub use skill::{Skill, SkillId, SkillOutcome};

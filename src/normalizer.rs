@@ -24,6 +24,7 @@
 //! assert_eq!(calls[0].name, "get_weather");
 //! ```
 
+use async_trait::async_trait;
 use serde_json::{Map, Value};
 
 use crate::registry::KernelError;
@@ -69,6 +70,52 @@ pub struct ToolInvocationResult {
     pub output: Value,
 }
 
+/// Decision returned by a [`ToolDispatchHook`] before a tool invocation runs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolDispatchAction {
+    /// Invoke the tool normally.
+    Continue,
+    /// Do not invoke the tool; record `output` as the invocation result.
+    Skip { output: Value },
+    /// Stop dispatching and return [`KernelError::ToolDispatchTerminated`].
+    Terminate { reason: String },
+}
+
+/// Hook for policy, accounting, and tracing around normalized tool dispatch.
+///
+/// Hooks are intentionally provider-neutral: they see only the normalized
+/// [`ToolInvocation`] and the resulting [`ToolInvocationResult`]. Concrete
+/// policy engines, approval systems, and trace exporters should live in
+/// downstream crates and plug into this small kernel surface.
+#[async_trait]
+pub trait ToolDispatchHook: Send + Sync {
+    /// Called before each invocation. Return [`ToolDispatchAction::Continue`]
+    /// to invoke the tool, [`ToolDispatchAction::Skip`] to synthesize a result,
+    /// or [`ToolDispatchAction::Terminate`] to stop the dispatch loop.
+    async fn before_invocation(
+        &self,
+        _invocation: &ToolInvocation,
+    ) -> Result<ToolDispatchAction, KernelError> {
+        Ok(ToolDispatchAction::Continue)
+    }
+
+    /// Called after a tool invocation or hook-provided skip result is recorded.
+    async fn after_invocation(&self, _result: &ToolInvocationResult) -> Result<(), KernelError> {
+        Ok(())
+    }
+
+    /// Called when dispatch stops after this hook may have observed the
+    /// invocation in [`Self::before_invocation`]. Hooks that reserve resources
+    /// before dispatch should release them here.
+    async fn on_invocation_error(
+        &self,
+        _invocation: &ToolInvocation,
+        _error: &KernelError,
+    ) -> Result<(), KernelError> {
+        Ok(())
+    }
+}
+
 /// Dispatch normalized tool invocations sequentially through a [`ToolRegistry`].
 ///
 /// Sequential dispatch preserves model-emitted call order and avoids adding a
@@ -79,17 +126,106 @@ pub async fn dispatch_tool_invocations(
     tools: &ToolRegistry,
     invocations: &[ToolInvocation],
 ) -> Result<Vec<ToolInvocationResult>, KernelError> {
+    dispatch_tool_invocations_with_hooks(tools, invocations, &[]).await
+}
+
+/// Dispatch normalized tool invocations with policy/accounting hooks.
+///
+/// Hooks run in the order provided. A skip result still triggers every hook's
+/// [`ToolDispatchHook::after_invocation`] callback so audit hooks can record
+/// synthetic outcomes. A terminate action stops dispatch before the tool is
+/// invoked and returns [`KernelError::ToolDispatchTerminated`].
+pub async fn dispatch_tool_invocations_with_hooks(
+    tools: &ToolRegistry,
+    invocations: &[ToolInvocation],
+    hooks: &[&dyn ToolDispatchHook],
+) -> Result<Vec<ToolInvocationResult>, KernelError> {
     let mut results = Vec::with_capacity(invocations.len());
 
     for invocation in invocations {
-        let output = invocation.dispatch(tools).await?;
-        results.push(ToolInvocationResult {
+        let mut action = ToolDispatchAction::Continue;
+        // Track how many hooks observed `before_invocation` so that, on a
+        // hook error, we can notify exactly those hooks via
+        // `on_invocation_error`. Without this, a hook that reserved a
+        // resource in `before_invocation` (e.g. `DispatchBudgetHook`)
+        // would leak that reservation when a later hook errors.
+        let mut observed: usize = 0;
+        let mut before_err: Option<KernelError> = None;
+        for hook in hooks {
+            match hook.before_invocation(invocation).await {
+                Ok(next) => {
+                    observed += 1;
+                    action = next;
+                    if !matches!(action, ToolDispatchAction::Continue) {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    before_err = Some(error);
+                    break;
+                }
+            }
+        }
+        if let Some(error) = before_err {
+            notify_invocation_error_subset(hooks, observed, invocation, &error).await?;
+            return Err(error);
+        }
+
+        let output = match action {
+            ToolDispatchAction::Continue => match invocation.dispatch(tools).await {
+                Ok(output) => output,
+                Err(error) => {
+                    notify_invocation_error(hooks, invocation, &error).await?;
+                    return Err(error);
+                }
+            },
+            ToolDispatchAction::Skip { output } => output,
+            ToolDispatchAction::Terminate { reason } => {
+                let error = KernelError::ToolDispatchTerminated(reason);
+                notify_invocation_error(hooks, invocation, &error).await?;
+                return Err(error);
+            }
+        };
+
+        let result = ToolInvocationResult {
             invocation: invocation.clone(),
             output,
-        });
+        };
+
+        for hook in hooks {
+            hook.after_invocation(&result).await?;
+        }
+
+        results.push(result);
     }
 
     Ok(results)
+}
+
+async fn notify_invocation_error(
+    hooks: &[&dyn ToolDispatchHook],
+    invocation: &ToolInvocation,
+    error: &KernelError,
+) -> Result<(), KernelError> {
+    for hook in hooks {
+        hook.on_invocation_error(invocation, error).await?;
+    }
+    Ok(())
+}
+
+/// Notify the first `upto` hooks that observed `before_invocation` so they
+/// can release any resources reserved there. Used when a later hook's
+/// `before_invocation` returns an error and we must unwind partial state.
+async fn notify_invocation_error_subset(
+    hooks: &[&dyn ToolDispatchHook],
+    upto: usize,
+    invocation: &ToolInvocation,
+    error: &KernelError,
+) -> Result<(), KernelError> {
+    for hook in hooks.iter().take(upto) {
+        hook.on_invocation_error(invocation, error).await?;
+    }
+    Ok(())
 }
 
 /// Normalizes raw LLM text output into structured [`ToolInvocation`]s.
