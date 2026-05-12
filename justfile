@@ -59,3 +59,15 @@ release-pr:
 # Inspect the next semver bump release-plz would compute from current commits.
 next-version:
     @just release-preview 2>&1 | grep -E "(next version|already up-to-date|rig-compose)" || true
+# Run all checks needed for a PR / Commit to main locally
+pr-ready: check publish-dry-run
+
+# Install a git pre-push hook to automatically run the PR checks
+install-hooks:
+    #!/usr/bin/env bash
+    echo '#!/usr/bin/env bash' > .git/hooks/pre-push
+    echo 'set -e' >> .git/hooks/pre-push
+    echo 'echo "Running just pr-ready..."' >> .git/hooks/pre-push
+    echo 'just pr-ready' >> .git/hooks/pre-push
+    chmod +x .git/hooks/pre-push
+    echo "pre-push hook installed."

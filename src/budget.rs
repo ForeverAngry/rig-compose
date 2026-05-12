@@ -41,11 +41,16 @@
 //! # Ok(()) }
 //! ```
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use tracing::{instrument, trace};
+
+use crate::normalizer::{
+    ToolDispatchAction, ToolDispatchHook, ToolInvocation, ToolInvocationResult,
+};
+use crate::registry::KernelError;
 
 /// Errors a budget implementation may surface.
 ///
@@ -75,6 +80,112 @@ pub trait BudgetGuard: Send + Sync {
 
     /// Release previously reserved units back to the pool.
     async fn release(&self, cost: u64);
+}
+
+/// Dispatch hook that gates each normalized tool invocation on a [`BudgetGuard`].
+///
+/// The hook reserves `cost_per_invocation` before each call. If the budget
+/// denies the reservation, dispatch terminates before the tool runs. Successful
+/// reservations are released after the invocation completes, after a synthetic
+/// skip result is recorded, or when dispatch stops with an error.
+#[derive(Debug)]
+pub struct DispatchBudgetHook<G>
+where
+    G: BudgetGuard,
+{
+    guard: Arc<G>,
+    cost_per_invocation: u64,
+    reserved: Mutex<u64>,
+}
+
+impl<G> DispatchBudgetHook<G>
+where
+    G: BudgetGuard,
+{
+    /// Create a dispatch-budget hook over `guard`.
+    pub fn new(guard: Arc<G>, cost_per_invocation: u64) -> Self {
+        Self {
+            guard,
+            cost_per_invocation,
+            reserved: Mutex::new(0),
+        }
+    }
+
+    /// Units reserved for each invocation.
+    pub fn cost_per_invocation(&self) -> u64 {
+        self.cost_per_invocation
+    }
+
+    /// Underlying budget guard.
+    pub fn guard(&self) -> &Arc<G> {
+        &self.guard
+    }
+
+    async fn release_one(&self) {
+        let should_release = {
+            let mut reserved = self
+                .reserved
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if *reserved == 0 {
+                false
+            } else {
+                *reserved -= 1;
+                true
+            }
+        };
+
+        if should_release {
+            self.guard.release(self.cost_per_invocation).await;
+        }
+    }
+}
+
+#[async_trait]
+impl<G> ToolDispatchHook for DispatchBudgetHook<G>
+where
+    G: BudgetGuard,
+{
+    async fn before_invocation(
+        &self,
+        invocation: &ToolInvocation,
+    ) -> Result<ToolDispatchAction, KernelError> {
+        let reserved = self
+            .guard
+            .try_reserve(self.cost_per_invocation)
+            .await
+            .map_err(|error| KernelError::BudgetFailed(error.to_string()))?;
+
+        if reserved {
+            let mut count = self
+                .reserved
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *count = count.saturating_add(1);
+            Ok(ToolDispatchAction::Continue)
+        } else {
+            Ok(ToolDispatchAction::Terminate {
+                reason: format!(
+                    "budget denied `{}` at cost {}",
+                    invocation.name, self.cost_per_invocation
+                ),
+            })
+        }
+    }
+
+    async fn after_invocation(&self, _result: &ToolInvocationResult) -> Result<(), KernelError> {
+        self.release_one().await;
+        Ok(())
+    }
+
+    async fn on_invocation_error(
+        &self,
+        _invocation: &ToolInvocation,
+        _error: &KernelError,
+    ) -> Result<(), KernelError> {
+        self.release_one().await;
+        Ok(())
+    }
 }
 
 /// Refund channel invoked when a [`TokenReservation`] is dropped

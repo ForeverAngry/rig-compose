@@ -39,6 +39,20 @@ pub enum KernelError {
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
 
+    /// Failed to parse tool-call markers in raw model output. Distinct from
+    /// [`Self::ToolFailed`] (which signals an invocation-time error) so
+    /// callers can distinguish a parse/normalizer failure from a runtime one.
+    #[error("tool-call normalizer failed: {0}")]
+    NormalizerFailed(String),
+
+    /// A dispatch hook intentionally stopped a normalized tool dispatch loop.
+    #[error("tool dispatch terminated: {0}")]
+    ToolDispatchTerminated(String),
+
+    /// A budget or accounting hook failed while evaluating dispatch policy.
+    #[error("budget failed: {0}")]
+    BudgetFailed(String),
+
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }

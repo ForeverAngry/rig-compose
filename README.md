@@ -20,11 +20,15 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 
 ## Status
 
-- Crate version: `0.1.2`.
+- Crate version: `0.2.0`.
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
-- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, and `KernelError::ToolNotApplicable` for soft tool failures.
+- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, and provider-neutral context packing primitives.
+
+The crate-local maturity plan lives in [ROADMAP.md](ROADMAP.md). Cross-crate
+coordination lives in
+[`rig-contributions/docs/roadmap.md`](../rig-contributions/docs/roadmap.md).
 
 ## Feature flags
 
@@ -39,10 +43,11 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 - [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, and `LocalTool`. Tools are the side-effectful async boundary.
 - [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views.
 - [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context.
-- [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction`. This is the shared state that skills read and enrich.
+- [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction` for skill-chain state, plus `ContextItem`, `ContextPack`, `ContextPackConfig`, and `ContextSourceKind` for provider-neutral context-window planning.
 - [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
 - [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
 - [src/budget.rs](src/budget.rs): `BudgetGuard`, `TokenBudget`, `AtomicBudget`, `AtomicTokenBudget`, `TokenReservation`, `TokenRefund`, and `BudgetError`. These meter rows, dispatch slots, and prompt-token reservations.
+- [src/normalizer.rs](src/normalizer.rs): `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`, `ToolInvocation`, and `dispatch_tool_invocations`. These normalize LFM/MLX text markers, OpenAI Responses `function_call` output, and OpenAI Chat Completions `tool_calls` into the same dispatchable shape.
 - [src/workflow.rs](src/workflow.rs): `Workflow`, the async workflow composition trait.
 - [src/instructions.rs](src/instructions.rs): `Instructions`, a serializable instruction bundle with examples, response schema, and metadata.
 - [src/manifest.rs](src/manifest.rs): `AgentManifest`, `ModelSpec`, `ToolSpec`, `DelegateSpec`, and materialization helpers, gated behind `manifest`.
@@ -112,6 +117,96 @@ assert_eq!(result.skills_run, vec!["example.keyword".to_string()]);
 
 The budget behavior is covered by the unit tests in [src/budget.rs](src/budget.rs), including reservation reconciliation and drop-time refunds.
 
+## Tool-Call Normalization
+
+Local OpenAI-compatible servers sometimes emit tool intent as text instead of
+provider-native structured tool calls. `rig-compose` normalizes both paths into
+one kernel shape:
+
+```text
+raw model output or provider JSON
+    -> ToolInvocation { name, args }
+    -> ToolRegistry
+    -> tool result
+    -> next model turn / final answer
+```
+
+Supported normalizers today:
+
+- `LfmNormalizer`: parses LiquidAI LFM markers such as `<|tool_call_start|>[get_weather(city='Berlin')]<|tool_call_end|>`.
+- `StructuredToolCallNormalizer::normalize_openai_responses`: parses OpenAI Responses `function_call` output items or full response objects.
+- `StructuredToolCallNormalizer::normalize_openai_chat_completions`: parses OpenAI Chat Completions `tool_calls` or full chat completion responses.
+
+All of these produce `ToolInvocation` values that can be dispatched through
+`dispatch_tool_invocations(&ToolRegistry, &[ToolInvocation])`.
+
+The intended agent loop is: normalize the first model response, dispatch any
+invocations through the registry, pass the tool results back to the model, then
+let the model produce the final answer. `rig-compose` owns the provider-neutral
+normalization and dispatch pieces; callers decide how to encode tool results for
+their provider or local server.
+
+Use `dispatch_tool_invocations_with_hooks` when callers need policy,
+accounting, or tracing around dispatch. `ToolDispatchHook` can continue an
+invocation, skip it with a synthetic result, or terminate the loop before the
+tool runs. Hooks receive only kernel shapes (`ToolInvocation` and
+`ToolInvocationResult`), keeping provider, MCP, memory, approval, and telemetry
+implementations downstream.
+
+`DispatchBudgetHook` is the first concrete hook. It gates each normalized tool
+invocation on a `BudgetGuard`, terminates dispatch when the budget denies the
+reservation, and releases the reservation after success, skip, or dispatch
+error.
+
+## Context Planning
+
+`ContextItem` is the provider-neutral shape for one piece of context that may
+enter a model window. It records the source kind, stable source id, rank, score,
+prompt-ready text, character estimate, provenance, and metadata without tying
+the kernel to memory, MCP, files, resource stores, or provider SDKs.
+
+`ContextPack` takes ranked context items and a `ContextPackConfig`, selects what
+fits in a bounded character window, and records omitted items with explicit
+`ContextOmissionReason` values. This is the kernel-level generalization of the
+memory candidate/context-pack work in `rig-memvid`: memory cards, tool results,
+resource lookups, files, and reasoning workspace notes can all project into the
+same packable shape.
+
+```rust,no_run
+use rig_compose::{ContextItem, ContextPack, ContextPackConfig, ContextSourceKind};
+
+let memory = ContextItem::new(
+    ContextSourceKind::Memory,
+    "memory/card/alice-location",
+    "fact alice lives in Berlin",
+)
+.with_rank(0)
+.with_score(9.5);
+
+let tool_result = ContextItem::new(
+    ContextSourceKind::ToolResult,
+    "tool/weather/call-1",
+    "weather Berlin is clear and cool",
+)
+.with_rank(1);
+
+let pack = ContextPack::pack(
+    vec![tool_result, memory],
+    ContextPackConfig::new(1_000).with_max_items(8),
+);
+
+assert!(pack.render_text().contains("Berlin"));
+```
+
+## Harness Prototype
+
+[examples/tool_loop_harness.rs](examples/tool_loop_harness.rs) shows the first
+deterministic harness shape around that loop. It records the task, first model
+output, normalized invocations, dispatched tool results, final answer, and
+passed assertions. This is intentionally an example rather than a new crate: it
+lets the platform prove the run-record vocabulary before extracting a dedicated
+`rig-harness` layer.
+
 ## Validation
 
 Canonical validation is `just check`.
@@ -132,7 +227,7 @@ These companion crates are maintained as separate repositories. Together they fo
 ```mermaid
 flowchart TD
     rig["rig / rig-core"]
-    compose["rig-compose 0.1.x"]
+    compose["rig-compose 0.2.x"]
     resources["rig-resources 0.1.x"]
     mcp["rig-mcp 0.1.x"]
     memvid["rig-memvid 0.1.x"]

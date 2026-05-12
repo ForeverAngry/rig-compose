@@ -54,6 +54,9 @@ pub mod delegate;
 pub mod instructions;
 #[cfg(feature = "manifest")]
 pub mod manifest;
+/// Tool-call normalizer: converts raw model text output (in-band markers)
+/// into structured [`normalizer::ToolInvocation`]s for kernel dispatch.
+pub mod normalizer;
 pub mod registry;
 pub mod skill;
 pub mod tool;
@@ -61,10 +64,13 @@ pub mod workflow;
 
 pub use agent::{Agent, AgentId, AgentStepResult, GenericAgent, GenericAgentBuilder};
 pub use budget::{
-    AtomicBudget, AtomicTokenBudget, BudgetError, BudgetGuard, TokenBudget, TokenRefund,
-    TokenReservation,
+    AtomicBudget, AtomicTokenBudget, BudgetError, BudgetGuard, DispatchBudgetHook, TokenBudget,
+    TokenRefund, TokenReservation,
 };
-pub use context::{Evidence, InvestigationContext, NextAction, Signal};
+pub use context::{
+    ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextSourceKind,
+    Evidence, InvestigationContext, NextAction, OmittedContextItem, Signal,
+};
 pub use coordinator::{CoordinatorAgent, CoordinatorBuilder, RoutingRule};
 pub use delegate::{
     DelegateExecutor, DelegateName, DelegateRegistry, DelegateTool, InProcessAgentDelegate,
@@ -75,6 +81,11 @@ pub use manifest::{
     AgentManifest, DelegateKind, DelegateSpec, InstructionsSpec, KnowledgeSpec, ManifestError,
     McpServerSpec, ModelSpec, ToolSpec, delegate_stub, materialize_local_and_delegate_tools,
     materialize_local_and_delegate_tools_with_delegates,
+};
+pub use normalizer::{
+    LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer, ToolDispatchAction,
+    ToolDispatchHook, ToolInvocation, ToolInvocationResult, dispatch_tool_invocations,
+    dispatch_tool_invocations_with_hooks,
 };
 pub use registry::{KernelError, SkillRegistry, ToolRegistry};
 pub use skill::{Skill, SkillId, SkillOutcome};

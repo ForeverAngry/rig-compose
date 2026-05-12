@@ -1,5 +1,7 @@
 # Changelog
 
+<!-- markdownlint-disable MD024 -->
+
 All notable changes to `rig-compose` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -8,6 +10,42 @@ Versions are managed automatically by [release-plz](https://release-plz.dev/)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
+
+### Added
+
+- Add crate-local `ROADMAP.md` documenting maturity status, next work, and
+  non-goals for the composition kernel.
+- Add provider-neutral tool-call normalization and dispatch helpers:
+  `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`,
+  `ToolInvocation`, `ToolInvocationResult`, and
+  `dispatch_tool_invocations`.
+- Support LiquidAI LFM/MLX textual tool-call markers, OpenAI Responses
+  `function_call` output items, and OpenAI Chat Completions `tool_calls` as
+  standard inputs that normalize into the same `ToolInvocation` shape.
+- Add `KernelError::NormalizerFailed(String)` for parse/normalization failures
+  that are distinct from tool invocation failures.
+- Add deterministic coverage for the complete normalize -> dispatch ->
+  second-turn answer pattern.
+- Add `examples/tool_loop_harness.rs` as the first deterministic harness
+  prototype for recording task input, normalized invocations, tool results,
+  final answer, and passed assertions.
+- Add `ToolDispatchHook`, `ToolDispatchAction`, and
+  `dispatch_tool_invocations_with_hooks` so downstream policy, accounting, and
+  tracing layers can continue, skip, or terminate normalized tool dispatch.
+- Add `DispatchBudgetHook`, a `BudgetGuard`-backed dispatch hook that gates
+  normalized tool invocations and releases reservations after success, skip, or
+  dispatch error.
+- Add provider-neutral context-window planning primitives: `ContextSourceKind`,
+  `ContextItem`, `ContextPackConfig`, `ContextPack`, `ContextOmissionReason`,
+  and `OmittedContextItem`.
+
+### Fixed
+
+- `dispatch_tool_invocations_with_hooks` now notifies earlier hooks via
+  `on_invocation_error` when a later hook's `before_invocation` returns an
+  error. Previously the error short-circuited the dispatch loop without
+  giving resource-reserving hooks (such as `DispatchBudgetHook`) a chance to
+  release; reservations would leak on every failed pre-flight.
 
 ## [0.2.1](https://github.com/ForeverAngry/rig-compose/compare/v0.2.0...v0.2.1) - 2026-05-07
 
