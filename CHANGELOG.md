@@ -11,6 +11,14 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/ForeverAngry/rig-compose/compare/v0.2.1...v0.3.0) - 2026-05-13
+
+### Added
+
+- *(tool)* Add ToolResultEnvelope for bounding large tool outputs ([#7](https://github.com/ForeverAngry/rig-compose/pull/7))
+- Add context packing and dispatch hooks
+- Normalize tool calls across provider shapes
+
 ### Added
 
 - Add crate-local `ROADMAP.md` documenting maturity status, next work, and
