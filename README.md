@@ -24,7 +24,7 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
-- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, and provider-neutral context packing primitives.
+- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, provider-neutral context packing primitives, and bounded tool-result envelopes.
 
 The crate-local maturity plan lives in [ROADMAP.md](ROADMAP.md). Cross-crate
 coordination lives in
@@ -40,7 +40,7 @@ coordination lives in
 ## Key Types
 
 - [src/skill.rs](src/skill.rs): `Skill`, `SkillId`, and `SkillOutcome`. Skills are stateless and decide whether they apply to an `InvestigationContext`.
-- [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, and `LocalTool`. Tools are the side-effectful async boundary.
+- [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, `LocalTool`, `ToolResultEnvelope`, and `ToolResultEnvelopeConfig`. Tools are the side-effectful async boundary; envelopes provide deterministic bounding metadata for large tool results.
 - [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views.
 - [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context.
 - [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction` for skill-chain state, plus `ContextItem`, `ContextPack`, `ContextPackConfig`, and `ContextSourceKind` for provider-neutral context-window planning.
