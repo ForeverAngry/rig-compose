@@ -38,6 +38,9 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 - Add provider-neutral context-window planning primitives: `ContextSourceKind`,
   `ContextItem`, `ContextPackConfig`, `ContextPack`, `ContextOmissionReason`,
   and `OmittedContextItem`.
+- Add `ToolResultEnvelope`, `ToolResultEnvelopeConfig`, and
+  `bound_tool_result` for deterministic bounding metadata around large tool
+  results without changing the `Tool` trait.
 
 ### Fixed
 

@@ -89,5 +89,8 @@ pub use normalizer::{
 };
 pub use registry::{KernelError, SkillRegistry, ToolRegistry};
 pub use skill::{Skill, SkillId, SkillOutcome};
-pub use tool::{LocalTool, Tool, ToolName, ToolSchema};
+pub use tool::{
+    LocalTool, Tool, ToolName, ToolResultEnvelope, ToolResultEnvelopeConfig, ToolSchema,
+    bound_tool_result,
+};
 pub use workflow::Workflow;
