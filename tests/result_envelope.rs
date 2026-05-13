@@ -50,8 +50,7 @@ async fn dispatch_then_bound_tool_result_clamps_oversized_payload() -> Result<()
     let tools = ToolRegistry::new();
     tools.register(oversized_tool());
 
-    let invocations =
-        vec![ToolInvocation::new("diagnostics.big_payload", json!({}))?];
+    let invocations = vec![ToolInvocation::new("diagnostics.big_payload", json!({}))?];
     let dispatched = dispatch_tool_invocations(&tools, &invocations).await?;
     assert_eq!(dispatched.len(), 1);
 
@@ -90,8 +89,7 @@ async fn custom_envelope_config_round_trips_through_serde() -> Result<(), Kernel
     let tools = ToolRegistry::new();
     tools.register(oversized_tool());
 
-    let invocations =
-        vec![ToolInvocation::new("diagnostics.big_payload", json!({}))?];
+    let invocations = vec![ToolInvocation::new("diagnostics.big_payload", json!({}))?];
     let dispatched = dispatch_tool_invocations(&tools, &invocations).await?;
 
     let config = ToolResultEnvelopeConfig::new(128).with_max_array_items(8);
@@ -107,10 +105,7 @@ async fn custom_envelope_config_round_trips_through_serde() -> Result<(), Kernel
         128
     );
     assert_eq!(
-        envelope.payload["items"]
-            .as_array()
-            .expect("items")
-            .len(),
+        envelope.payload["items"].as_array().expect("items").len(),
         8
     );
 
@@ -137,8 +132,7 @@ async fn small_payloads_pass_through_envelope_unchanged() -> Result<(), KernelEr
         },
     )));
 
-    let invocations =
-        vec![ToolInvocation::new("math.add", json!({"a": 20, "b": 22}))?];
+    let invocations = vec![ToolInvocation::new("math.add", json!({"a": 20, "b": 22}))?];
     let dispatched = dispatch_tool_invocations(&tools, &invocations).await?;
     let raw = dispatched[0].output.clone();
 
