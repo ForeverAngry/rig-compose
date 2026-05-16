@@ -4,7 +4,7 @@
 //! source kind so the kernel vocabulary is validated against multiple in-crate
 //! sources before any cross-crate adapter work begins. See the
 //! "Validate Against ≥2 Sources Before Building Adapters" practice in
-//! `rig-contributions/docs/development-standards.md`.
+//! `rig-ecosystem/docs/development-standards.md`.
 
 use rig_compose::{
     ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextSourceKind,
