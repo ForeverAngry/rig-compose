@@ -20,7 +20,7 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 
 ## Status
 
-- Crate version: `0.2.0`.
+- Crate version: `0.3.0`.
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
