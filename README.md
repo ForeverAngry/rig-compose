@@ -64,7 +64,7 @@ The main companion integration points are:
 - `rig-resources` provides reusable skills and tools that implement `rig-compose` traits.
 - Downstream systems can use `BudgetGuard` and `TokenBudget` to enforce compute budgets around agent dispatch and LLM token use.
 
-## Usage
+## Quick start
 
 The minimal runnable example is [examples/basic_agent.rs](examples/basic_agent.rs). It registers one stateless skill, builds a `GenericAgent`, and runs that agent against an `InvestigationContext`.
 
