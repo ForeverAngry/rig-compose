@@ -18,6 +18,41 @@ use crate::{
 };
 
 /// Domain-neutral manifest fragment for a single agent.
+///
+/// # Example
+///
+/// Parse a portable manifest from YAML/JSON and materialise local tools plus
+/// delegate stubs against an empty host registry. The kernel never spawns
+/// MCP servers itself; that wiring is host-owned.
+///
+/// ```
+/// use rig_compose::{AgentManifest, ToolRegistry, manifest::materialize_local_and_delegate_tools};
+///
+/// let yaml = r#"
+/// name: portable-agent
+/// instructions:
+///   system_prompt: "You are portable."
+/// model:
+///   provider: openai_compatible
+///   base_url: http://localhost:11434/v1
+///   name: llama3
+/// delegates:
+///   - name: child_agent
+///     description: A child specialist
+/// "#;
+///
+/// let manifest = AgentManifest::from_yaml(yaml).expect("parse manifest");
+/// assert_eq!(manifest.name.as_deref(), Some("portable-agent"));
+///
+/// let host_tools = ToolRegistry::new();
+/// let registry = materialize_local_and_delegate_tools(
+///     &manifest.tools,
+///     &manifest.delegates,
+///     &host_tools,
+/// )
+/// .expect("materialise tools");
+/// assert!(registry.get("child_agent").is_ok());
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentManifest {
     /// Optional human-readable name (logged on startup; otherwise host-defined).
