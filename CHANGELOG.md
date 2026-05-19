@@ -11,6 +11,18 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/ForeverAngry/rig-compose/compare/v0.3.0...v0.3.1) - 2026-05-18
+
+### Documentation
+
+- Normalize quick start section
+- *(manifest)* Add runnable doctest for AgentManifest ([#17](https://github.com/ForeverAngry/rig-compose/pull/17))
+- Bump README crate version
+- Rename coordination references to rig-ecosystem
+- Align ecosystem docs with rig-compose 0.3, rig-core 0.37, and rig-model-meta 0.1 ([#12](https://github.com/ForeverAngry/rig-compose/pull/12))
+- Update ecosystem topology with rig-compose 0.3 and rig-model-meta ([#10](https://github.com/ForeverAngry/rig-compose/pull/10))
+- Update ecosystem topology with rig-compose 0.3 and rig-model-meta ([#9](https://github.com/ForeverAngry/rig-compose/pull/9))
+
 ## [0.3.0](https://github.com/ForeverAngry/rig-compose/compare/v0.2.1...v0.3.0) - 2026-05-13
 
 ### Added
