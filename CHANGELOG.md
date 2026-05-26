@@ -11,6 +11,35 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add reliability primitives in a new `reliability` module: `RetryClass`
+  (`Transient` / `Permanent`), `RetryClassifier` trait with
+  `DefaultRetryClassifier` covering every `KernelError` variant,
+  `ToolCallFingerprint` (stable hash of tool name + canonical JSON args)
+  exposed via `ToolInvocation::fingerprint`, and a deterministic
+  `repair_history` that coalesces retried calls (keep first completion;
+  otherwise keep last failure; preserve first-occurrence order).
+- Add `DispatchTrace` + `DispatchTraceEvent` (with `TracedAction` /
+  `TracedOutcome`) and `dispatch_tool_invocations_with_trace`, giving hosts a
+  replayable, backend-agnostic record of every hook decision, hook error,
+  reservation cleanup, after-hook invocation, and per-invocation outcome
+  during normalized tool dispatch.
+- Add `AgentLifecycleHook` and `GenericAgentBuilder::with_lifecycle_hook` so
+  downstream observers can instrument step start, skill consideration, skill
+  completion, step completion, and step errors without adding an observability
+  dependency to `rig-compose`.
+- Add `examples/context_pack_mix.rs`, showing how a coordinator can mix
+  already-projected memory and resource `ContextItem`s into one bounded
+  `ContextPack` without adding dependencies from `rig-compose` back to
+  producer crates.
+
+### Changed
+
+- `ToolDispatchAction::Skip` now carries an optional reason, and
+  `ToolDispatchHook` gains `after_invocation_with_outcome` so audit hooks can
+  distinguish real tool execution from synthetic skip results.
+
 ## [0.3.1](https://github.com/ForeverAngry/rig-compose/compare/v0.3.0...v0.3.1) - 2026-05-18
 
 ### Documentation
@@ -19,9 +48,9 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 - *(manifest)* Add runnable doctest for AgentManifest ([#17](https://github.com/ForeverAngry/rig-compose/pull/17))
 - Bump README crate version
 - Rename coordination references to rig-ecosystem
-- Align ecosystem docs with rig-compose 0.3, rig-core 0.37, and rig-model-meta 0.1 ([#12](https://github.com/ForeverAngry/rig-compose/pull/12))
-- Update ecosystem topology with rig-compose 0.3 and rig-model-meta ([#10](https://github.com/ForeverAngry/rig-compose/pull/10))
-- Update ecosystem topology with rig-compose 0.3 and rig-model-meta ([#9](https://github.com/ForeverAngry/rig-compose/pull/9))
+- Align ecosystem docs with rig-compose 0.3, rig-core 0.37, and rig-model-catalog 0.1 ([#12](https://github.com/ForeverAngry/rig-compose/pull/12))
+- Update ecosystem topology with rig-compose 0.3 and rig-model-catalog ([#10](https://github.com/ForeverAngry/rig-compose/pull/10))
+- Update ecosystem topology with rig-compose 0.3 and rig-model-catalog ([#9](https://github.com/ForeverAngry/rig-compose/pull/9))
 
 ## [0.3.0](https://github.com/ForeverAngry/rig-compose/compare/v0.2.1...v0.3.0) - 2026-05-13
 
