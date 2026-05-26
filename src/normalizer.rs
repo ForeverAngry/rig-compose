@@ -30,6 +30,7 @@ use serde_json::{Map, Value};
 use crate::registry::KernelError;
 use crate::registry::ToolRegistry;
 use crate::tool::ToolName;
+use crate::trace::{DispatchTrace, DispatchTraceEvent, TracedAction, TracedOutcome};
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -76,9 +77,26 @@ pub enum ToolDispatchAction {
     /// Invoke the tool normally.
     Continue,
     /// Do not invoke the tool; record `output` as the invocation result.
-    Skip { output: Value },
+    Skip {
+        /// Synthetic output to record as the invocation result.
+        output: Value,
+        /// Optional human-readable reason the tool body was not invoked.
+        reason: Option<String>,
+    },
     /// Stop dispatching and return [`KernelError::ToolDispatchTerminated`].
     Terminate { reason: String },
+}
+
+/// Outcome recorded for one normalized [`ToolInvocation`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolInvocationOutcome {
+    /// The tool body ran and produced the result.
+    Completed,
+    /// A hook supplied a synthetic skip result instead of invoking the tool.
+    Skipped {
+        /// Optional human-readable reason the tool body was not invoked.
+        reason: Option<String>,
+    },
 }
 
 /// Hook for policy, accounting, and tracing around normalized tool dispatch.
@@ -102,6 +120,19 @@ pub trait ToolDispatchHook: Send + Sync {
     /// Called after a tool invocation or hook-provided skip result is recorded.
     async fn after_invocation(&self, _result: &ToolInvocationResult) -> Result<(), KernelError> {
         Ok(())
+    }
+
+    /// Called after a dispatch result is recorded, including whether it came
+    /// from real tool execution or a hook-provided skip.
+    ///
+    /// The default implementation preserves compatibility for hooks that only
+    /// care about the result payload.
+    async fn after_invocation_with_outcome(
+        &self,
+        result: &ToolInvocationResult,
+        _outcome: &ToolInvocationOutcome,
+    ) -> Result<(), KernelError> {
+        self.after_invocation(result).await
     }
 
     /// Called when dispatch stops after this hook may have observed the
@@ -140,9 +171,34 @@ pub async fn dispatch_tool_invocations_with_hooks(
     invocations: &[ToolInvocation],
     hooks: &[&dyn ToolDispatchHook],
 ) -> Result<Vec<ToolInvocationResult>, KernelError> {
+    dispatch_inner(tools, invocations, hooks, None).await
+}
+
+/// Dispatch normalized tool invocations and record a [`DispatchTrace`].
+///
+/// Behaves identically to [`dispatch_tool_invocations_with_hooks`], but appends
+/// a [`DispatchTraceEvent`] for every hook decision, hook error, reservation
+/// cleanup, hook-after invocation, and final per-invocation outcome. Use this
+/// when a host needs a deterministic, replayable record of policy decisions
+/// without depending on a concrete tracing backend.
+pub async fn dispatch_tool_invocations_with_trace(
+    tools: &ToolRegistry,
+    invocations: &[ToolInvocation],
+    hooks: &[&dyn ToolDispatchHook],
+    trace: &DispatchTrace,
+) -> Result<Vec<ToolInvocationResult>, KernelError> {
+    dispatch_inner(tools, invocations, hooks, Some(trace)).await
+}
+
+async fn dispatch_inner(
+    tools: &ToolRegistry,
+    invocations: &[ToolInvocation],
+    hooks: &[&dyn ToolDispatchHook],
+    trace: Option<&DispatchTrace>,
+) -> Result<Vec<ToolInvocationResult>, KernelError> {
     let mut results = Vec::with_capacity(invocations.len());
 
-    for invocation in invocations {
+    for (invocation_index, invocation) in invocations.iter().enumerate() {
         let mut action = ToolDispatchAction::Continue;
         // Track how many hooks observed `before_invocation` so that, on a
         // hook error, we can notify exactly those hooks via
@@ -150,39 +206,86 @@ pub async fn dispatch_tool_invocations_with_hooks(
         // resource in `before_invocation` (e.g. `DispatchBudgetHook`)
         // would leak that reservation when a later hook errors.
         let mut observed: usize = 0;
-        let mut before_err: Option<KernelError> = None;
-        for hook in hooks {
+        let mut before_err: Option<(usize, KernelError)> = None;
+        for (hook_index, hook) in hooks.iter().enumerate() {
             match hook.before_invocation(invocation).await {
                 Ok(next) => {
                     observed += 1;
+                    if let Some(trace) = trace {
+                        trace.push(DispatchTraceEvent::HookBefore {
+                            invocation_index,
+                            hook_index,
+                            decision: TracedAction::from(&next),
+                        });
+                    }
                     action = next;
                     if !matches!(action, ToolDispatchAction::Continue) {
                         break;
                     }
                 }
                 Err(error) => {
-                    before_err = Some(error);
+                    before_err = Some((hook_index, error));
                     break;
                 }
             }
         }
-        if let Some(error) = before_err {
-            notify_invocation_error_subset(hooks, observed, invocation, &error).await?;
+        if let Some((hook_index, error)) = before_err {
+            if let Some(trace) = trace {
+                trace.push(DispatchTraceEvent::HookBeforeError {
+                    invocation_index,
+                    hook_index,
+                    message: error.to_string(),
+                });
+            }
+            notify_invocation_error_subset(
+                hooks,
+                observed,
+                invocation,
+                &error,
+                trace,
+                invocation_index,
+            )
+            .await?;
+            if let Some(trace) = trace {
+                trace.push(DispatchTraceEvent::InvocationOutcome {
+                    invocation_index,
+                    outcome: TracedOutcome::Failed {
+                        message: error.to_string(),
+                    },
+                });
+            }
             return Err(error);
         }
 
-        let output = match action {
+        let (output, outcome) = match action {
             ToolDispatchAction::Continue => match invocation.dispatch(tools).await {
-                Ok(output) => output,
+                Ok(output) => (output, ToolInvocationOutcome::Completed),
                 Err(error) => {
-                    notify_invocation_error(hooks, invocation, &error).await?;
+                    notify_invocation_error(hooks, invocation, &error, trace, invocation_index)
+                        .await?;
+                    if let Some(trace) = trace {
+                        trace.push(DispatchTraceEvent::InvocationOutcome {
+                            invocation_index,
+                            outcome: TracedOutcome::Failed {
+                                message: error.to_string(),
+                            },
+                        });
+                    }
                     return Err(error);
                 }
             },
-            ToolDispatchAction::Skip { output } => output,
+            ToolDispatchAction::Skip { output, reason } => {
+                (output, ToolInvocationOutcome::Skipped { reason })
+            }
             ToolDispatchAction::Terminate { reason } => {
-                let error = KernelError::ToolDispatchTerminated(reason);
-                notify_invocation_error(hooks, invocation, &error).await?;
+                let error = KernelError::ToolDispatchTerminated(reason.clone());
+                notify_invocation_error(hooks, invocation, &error, trace, invocation_index).await?;
+                if let Some(trace) = trace {
+                    trace.push(DispatchTraceEvent::InvocationOutcome {
+                        invocation_index,
+                        outcome: TracedOutcome::Terminated { reason },
+                    });
+                }
                 return Err(error);
             }
         };
@@ -192,8 +295,28 @@ pub async fn dispatch_tool_invocations_with_hooks(
             output,
         };
 
-        for hook in hooks {
-            hook.after_invocation(&result).await?;
+        for (hook_index, hook) in hooks.iter().enumerate() {
+            hook.after_invocation_with_outcome(&result, &outcome)
+                .await?;
+            if let Some(trace) = trace {
+                trace.push(DispatchTraceEvent::HookAfter {
+                    invocation_index,
+                    hook_index,
+                });
+            }
+        }
+
+        if let Some(trace) = trace {
+            let outcome_event = match &outcome {
+                ToolInvocationOutcome::Completed => TracedOutcome::Completed,
+                ToolInvocationOutcome::Skipped { reason } => TracedOutcome::Skipped {
+                    reason: reason.clone(),
+                },
+            };
+            trace.push(DispatchTraceEvent::InvocationOutcome {
+                invocation_index,
+                outcome: outcome_event,
+            });
         }
 
         results.push(result);
@@ -206,9 +329,17 @@ async fn notify_invocation_error(
     hooks: &[&dyn ToolDispatchHook],
     invocation: &ToolInvocation,
     error: &KernelError,
+    trace: Option<&DispatchTrace>,
+    invocation_index: usize,
 ) -> Result<(), KernelError> {
-    for hook in hooks {
+    for (hook_index, hook) in hooks.iter().enumerate() {
         hook.on_invocation_error(invocation, error).await?;
+        if let Some(trace) = trace {
+            trace.push(DispatchTraceEvent::HookCleanup {
+                invocation_index,
+                hook_index,
+            });
+        }
     }
     Ok(())
 }
@@ -221,9 +352,17 @@ async fn notify_invocation_error_subset(
     upto: usize,
     invocation: &ToolInvocation,
     error: &KernelError,
+    trace: Option<&DispatchTrace>,
+    invocation_index: usize,
 ) -> Result<(), KernelError> {
-    for hook in hooks.iter().take(upto) {
+    for (hook_index, hook) in hooks.iter().take(upto).enumerate() {
         hook.on_invocation_error(invocation, error).await?;
+        if let Some(trace) = trace {
+            trace.push(DispatchTraceEvent::HookCleanup {
+                invocation_index,
+                hook_index,
+            });
+        }
     }
     Ok(())
 }

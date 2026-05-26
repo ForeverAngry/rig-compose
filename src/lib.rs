@@ -58,11 +58,15 @@ pub mod manifest;
 /// into structured [`normalizer::ToolInvocation`]s for kernel dispatch.
 pub mod normalizer;
 pub mod registry;
+pub mod reliability;
 pub mod skill;
 pub mod tool;
+pub mod trace;
 pub mod workflow;
 
-pub use agent::{Agent, AgentId, AgentStepResult, GenericAgent, GenericAgentBuilder};
+pub use agent::{
+    Agent, AgentId, AgentLifecycleHook, AgentStepResult, GenericAgent, GenericAgentBuilder,
+};
 pub use budget::{
     AtomicBudget, AtomicTokenBudget, BudgetError, BudgetGuard, DispatchBudgetHook, TokenBudget,
     TokenRefund, TokenReservation,
@@ -84,13 +88,19 @@ pub use manifest::{
 };
 pub use normalizer::{
     LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer, ToolDispatchAction,
-    ToolDispatchHook, ToolInvocation, ToolInvocationResult, dispatch_tool_invocations,
-    dispatch_tool_invocations_with_hooks,
+    ToolDispatchHook, ToolInvocation, ToolInvocationOutcome, ToolInvocationResult,
+    dispatch_tool_invocations, dispatch_tool_invocations_with_hooks,
+    dispatch_tool_invocations_with_trace,
 };
 pub use registry::{KernelError, SkillRegistry, ToolRegistry};
+pub use reliability::{
+    DefaultRetryClassifier, HistoryEntry, RetryClass, RetryClassifier, ToolCallFingerprint,
+    repair_history,
+};
 pub use skill::{Skill, SkillId, SkillOutcome};
 pub use tool::{
     LocalTool, Tool, ToolName, ToolResultEnvelope, ToolResultEnvelopeConfig, ToolSchema,
     bound_tool_result,
 };
+pub use trace::{DispatchTrace, DispatchTraceEvent, TracedAction, TracedOutcome};
 pub use workflow::Workflow;

@@ -16,6 +16,9 @@ It must stay independent from `rig-core`, Memvid, MCP, concrete resource stores,
 - Budget guards and drop-safe token reservations.
 - Provider-neutral tool-call normalization for LFM/MLX markers, OpenAI Responses `function_call`, and OpenAI Chat Completions `tool_calls`.
 - Dispatch hooks that can continue, skip, terminate, and clean up reservations on later-hook failures.
+- Agent lifecycle hooks around `GenericAgent` step and skill execution, giving downstream observers a kernel-loop instrumentation point without a `rig-tap` dependency.
+- Replayable `DispatchTrace` records over every hook decision, hook error, cleanup, after-hook, and per-invocation outcome via `dispatch_tool_invocations_with_trace`.
+- Reliability primitives: `RetryClass` + `RetryClassifier` (default impl over every `KernelError`), `ToolCallFingerprint` (stable hash via `ToolInvocation::fingerprint`), and deterministic `repair_history` for coalescing retried tool calls.
 - Provider-neutral context packing with `ContextSourceKind`, `ContextItem`, `ContextPackConfig`, `ContextPack`, and explicit omission reasons.
 - Deterministic `examples/tool_loop_harness.rs` prototype for tool-loop replay records.
 
@@ -23,15 +26,13 @@ It must stay independent from `rig-core`, Memvid, MCP, concrete resource stores,
 
 - Harness records exist as examples/tests, but there is no reusable fixture runner yet.
 - Context packing is validated against in-crate memory-like and tool-result-like items, but downstream crates still need to project concrete memory, resource, graph, and lineage data into it.
-- Dispatch policy has hooks and budget accounting, but richer approval, retry, result-size, stuck-loop, and trace policies still live downstream or remain unbuilt.
+- Dispatch and agent lifecycle policy have hooks and budget accounting, but richer approval, retry, result-size, stuck-loop, and trace policies still live downstream or remain unbuilt.
 
 ## Next Work
 
 1. Stabilize the context vocabulary by wiring second-source downstream projections from `rig-memvid` and `rig-resources` without taking dependencies on those crates.
-2. Extend dispatch trace records for hook decisions, skipped calls, termination reasons, reservation cleanup, and downstream policy outcomes.
-3. Add reliability primitives around repeated tool-call fingerprints, bounded tool-result envelopes, retry classification, and deterministic history repair.
-4. Evolve `examples/tool_loop_harness.rs` into a fixture-compatible run record only after the same shape is proven in `rig-mcp` and memory-aware examples.
-5. Keep the `manifest` feature small: portable agent manifests, materialization helpers, and schema evolution only.
+2. Evolve `examples/tool_loop_harness.rs` into a fixture-compatible run record only after the same shape is proven in `rig-mcp` and memory-aware examples.
+3. Keep the `manifest` feature small: portable agent manifests, materialization helpers, and schema evolution only.
 
 ## Maturity Bar
 

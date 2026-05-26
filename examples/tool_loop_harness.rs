@@ -7,15 +7,10 @@ use rig_compose::{
 };
 use serde_json::json;
 
-#[derive(Debug)]
-struct ToolLoopHarnessRun {
-    task: String,
-    first_model_output: String,
-    invocations: Vec<ToolInvocation>,
-    dispatch_results: Vec<ToolInvocationResult>,
-    final_answer: String,
-    passed_assertions: Vec<&'static str>,
-}
+#[path = "common/harness_record.rs"]
+mod harness_record;
+
+use harness_record::HarnessRun;
 
 #[tokio::main]
 async fn main() -> Result<(), KernelError> {
@@ -42,12 +37,9 @@ async fn main() -> Result<(), KernelError> {
     )
     .await?;
 
-    println!("task: {}", run.task);
-    println!("first model output: {}", run.first_model_output);
-    println!("invocations: {:?}", run.invocations);
-    println!("tool results: {:?}", run.dispatch_results);
-    println!("final answer: {}", run.final_answer);
-    println!("passed assertions: {:?}", run.passed_assertions);
+    let json = serde_json::to_string_pretty(&run)
+        .map_err(|error| KernelError::ToolFailed(error.to_string()))?;
+    println!("{json}");
 
     Ok(())
 }
@@ -56,20 +48,21 @@ async fn run_tool_loop_harness(
     tools: &ToolRegistry,
     task: &str,
     first_model_output: &str,
-) -> Result<ToolLoopHarnessRun, KernelError> {
+) -> Result<HarnessRun, KernelError> {
     let invocations = LfmNormalizer.normalize(first_model_output)?;
     let dispatch_results = dispatch_tool_invocations(tools, &invocations).await?;
     let final_answer = fake_second_model_turn(&dispatch_results);
     let passed_assertions = harness_assertions(&invocations, &dispatch_results, &final_answer);
 
-    Ok(ToolLoopHarnessRun {
-        task: task.to_string(),
-        first_model_output: first_model_output.to_string(),
-        invocations,
-        dispatch_results,
+    Ok(HarnessRun::from_native(
+        "rig-compose/examples/tool_loop_harness",
+        task,
+        first_model_output,
+        &invocations,
+        &dispatch_results,
         final_answer,
         passed_assertions,
-    })
+    ))
 }
 
 fn harness_assertions(

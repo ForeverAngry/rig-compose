@@ -7,8 +7,8 @@
 use rig_compose::normalizer::{LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer};
 use rig_compose::{
     AtomicBudget, DispatchBudgetHook, KernelError, LocalTool, ToolDispatchAction, ToolDispatchHook,
-    ToolInvocation, ToolInvocationResult, ToolRegistry, ToolSchema, dispatch_tool_invocations,
-    dispatch_tool_invocations_with_hooks,
+    ToolInvocation, ToolInvocationOutcome, ToolInvocationResult, ToolRegistry, ToolSchema,
+    dispatch_tool_invocations, dispatch_tool_invocations_with_hooks,
 };
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -316,6 +316,26 @@ async fn dispatch_hooks_can_skip_with_synthetic_output() {
 }
 
 #[tokio::test]
+async fn dispatch_hooks_report_skip_outcome() {
+    let tools = weather_registry("clear");
+    let skip = SkipWeatherHook;
+    let recorder = OutcomeRecordingHook::default();
+    let invocations = LfmNormalizer
+        .normalize("<|tool_call_start|>[get_weather(city='Berlin')]<|tool_call_end|>")
+        .unwrap();
+
+    let results = dispatch_tool_invocations_with_hooks(&tools, &invocations, &[&skip, &recorder])
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        recorder.events(),
+        vec!["after:get_weather:skipped:policy-supplied"]
+    );
+}
+
+#[tokio::test]
 async fn dispatch_hooks_can_terminate_before_tool_invocation() {
     let tools = weather_registry("clear");
     let hook = TerminateHook;
@@ -596,7 +616,40 @@ impl ToolDispatchHook for SkipWeatherHook {
             .unwrap_or("unknown");
         Ok(ToolDispatchAction::Skip {
             output: json!({"city": city, "forecast": "policy-supplied"}),
+            reason: Some("policy-supplied".into()),
         })
+    }
+}
+
+#[derive(Default)]
+struct OutcomeRecordingHook {
+    events: Mutex<Vec<String>>,
+}
+
+impl OutcomeRecordingHook {
+    fn events(&self) -> Vec<String> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl ToolDispatchHook for OutcomeRecordingHook {
+    async fn after_invocation_with_outcome(
+        &self,
+        result: &ToolInvocationResult,
+        outcome: &ToolInvocationOutcome,
+    ) -> Result<(), KernelError> {
+        let outcome_text = match outcome {
+            ToolInvocationOutcome::Completed => "completed".to_string(),
+            ToolInvocationOutcome::Skipped { reason } => {
+                format!("skipped:{}", reason.as_deref().unwrap_or("unspecified"))
+            }
+        };
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("after:{}:{outcome_text}", result.invocation.name));
+        Ok(())
     }
 }
 

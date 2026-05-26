@@ -20,11 +20,11 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 
 ## Status
 
-- Crate version: `0.3.0`.
+- Crate version: `0.4.0`.
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
-- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, provider-neutral context packing primitives, and bounded tool-result envelopes.
+- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, agent lifecycle hooks, provider-neutral context packing primitives, and bounded tool-result envelopes.
 
 The crate-local maturity plan lives in [ROADMAP.md](ROADMAP.md). Cross-crate
 coordination lives in
@@ -42,7 +42,7 @@ coordination lives in
 - [src/skill.rs](src/skill.rs): `Skill`, `SkillId`, and `SkillOutcome`. Skills are stateless and decide whether they apply to an `InvestigationContext`.
 - [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, `LocalTool`, `ToolResultEnvelope`, and `ToolResultEnvelopeConfig`. Tools are the side-effectful async boundary; envelopes provide deterministic bounding metadata for large tool results.
 - [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views.
-- [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context.
+- [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `AgentLifecycleHook`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context and can notify producer-neutral hooks around step and skill execution.
 - [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction` for skill-chain state, plus `ContextItem`, `ContextPack`, `ContextPackConfig`, and `ContextSourceKind` for provider-neutral context-window planning.
 - [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
 - [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
@@ -153,6 +153,13 @@ tool runs. Hooks receive only kernel shapes (`ToolInvocation` and
 `ToolInvocationResult`), keeping provider, MCP, memory, approval, and telemetry
 implementations downstream.
 
+`GenericAgentBuilder::with_lifecycle_hook` provides the same downstream-owned
+extension point for the agent loop itself. `AgentLifecycleHook` observes step
+start, each skill consideration, applicable skill completion, step completion,
+and step errors without forcing `rig-compose` to depend on a tracing or
+observability crate. `rig-tap` implements this hook behind its `compose`
+feature and maps those callbacks into `compose.*` telemetry events.
+
 `DispatchBudgetHook` is the first concrete hook. It gates each normalized tool
 invocation on a `BudgetGuard`, terminates dispatch when the budget denies the
 reservation, and releases the reservation after success, skip, or dispatch
@@ -198,6 +205,11 @@ let pack = ContextPack::pack(
 assert!(pack.render_text().contains("Berlin"));
 ```
 
+[examples/context_pack_mix.rs](examples/context_pack_mix.rs) shows the
+coordinator-side boundary for mixing context projected by memory and resource
+crates into a single bounded `ContextPack` without depending on those producer
+crates from the kernel.
+
 ## Harness Prototype
 
 [examples/tool_loop_harness.rs](examples/tool_loop_harness.rs) shows the first
@@ -222,20 +234,20 @@ That recipe runs formatter checks, clippy and tests for default features and `ma
 
 ## Ecosystem
 
-These companion crates are maintained as separate repositories. Together they form a small stack around the upstream Rig project: `rig-compose` provides the kernel surface, `rig-resources` contributes reusable skills and tools, `rig-mcp` moves tools across MCP, `rig-memvid` connects Rig agents to persistent `.mv2` memory, and `rig-model-meta` abstracts LLM metadata and probes.
+These companion crates are maintained as separate repositories. Together they form a small stack around the upstream Rig project: `rig-compose` provides the kernel surface, `rig-resources` contributes reusable skills and tools, `rig-mcp` moves tools across MCP, `rig-memvid` connects Rig agents to persistent `.mv2` memory, and `rig-model-catalog` abstracts LLM metadata and probes.
 
 ```mermaid
 flowchart TD
     rig["rig / rig-core"]
-    compose["rig-compose 0.3.x"]
+    compose["rig-compose 0.4.x"]
     resources["rig-resources 0.1.x"]
     mcp["rig-mcp 0.1.x"]
     memvid["rig-memvid 0.1.x"]
-    model_meta["rig-model-meta 0.1.x"]
+    model_meta["rig-model-catalog 0.1.x"]
 
     compose -. "Rig-shaped kernel; no direct rig-core dep" .-> rig
-    resources -- "rig-compose = 0.3; features: security, graph, full" --> compose
-    mcp -- "rig-compose = 0.3; rmcp stdio bridge" --> compose
+    resources -- "rig-compose = 0.4; features: security, graph, full" --> compose
+    mcp -- "rig-compose = 0.4; rmcp stdio bridge" --> compose
     memvid -- "rig-core = 0.37.0; features: lex, simd, vec, api_embed, temporal, encryption, compaction, context-projection" --> rig
     model_meta -. "optional rig-core = 0.37 via rig-hook" .-> rig
 ```
@@ -245,10 +257,10 @@ Pinned Rig-facing dependencies from the current manifests:
 | Crate | Direct Rig-facing dependency | Notes |
 | --- | --- | --- |
 | `rig-compose` | none | Defines a Rig-shaped kernel surface without depending on `rig-core`. |
-| `rig-resources` | `rig-compose = 0.3` | Provides reusable skills, resource tools, and security helpers. |
-| `rig-mcp` | `rig-compose = 0.3` | Bridges `rig-compose` tools over MCP stdio and loopback transports. |
-| `rig-memvid` | `rig-core = 0.37.0`; optional `rig-compose = 0.3` | Implements Rig vector-store, prompt-hook, compaction, and context-projection flows over Memvid. |
-| `rig-model-meta` | optional `rig-core = 0.37` via `rig-hook` | Provides standalone model traits plus optional Rig prompt-hook telemetry. |
+| `rig-resources` | `rig-compose = 0.4` | Provides reusable skills, resource tools, and security helpers. |
+| `rig-mcp` | `rig-compose = 0.4` | Bridges `rig-compose` tools over MCP stdio and loopback transports. |
+| `rig-memvid` | `rig-core = 0.37.0`; optional `rig-compose = 0.4` | Implements Rig vector-store, prompt-hook, compaction, and context-projection flows over Memvid. |
+| `rig-model-catalog` | optional `rig-core = 0.37` via `rig-hook` | Provides standalone model traits plus optional Rig prompt-hook telemetry. |
 
 The concrete multi-crate workflow tested today is the MCP loopback path: a `rig_compose::ToolRegistry` is exposed through `rig_mcp::LoopbackTransport`, remote schemas are wrapped as `rig_mcp::McpTool`, and the wrapped tools are registered back into another `ToolRegistry`. That proves a local `rig-compose` tool and an MCP-adapted tool are indistinguishable to callers. The backing test is `mcp_tool_indistinguishable_from_local` in [rig-mcp/src/transport.rs](https://github.com/ForeverAngry/rig-mcp/blob/main/src/transport.rs).
 
