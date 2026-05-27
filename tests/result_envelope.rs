@@ -20,6 +20,7 @@ use std::sync::Arc;
 use rig_compose::{
     KernelError, LocalTool, ToolInvocation, ToolRegistry, ToolResultEnvelope,
     ToolResultEnvelopeConfig, ToolSchema, bound_tool_result, dispatch_tool_invocations,
+    dispatch_tool_invocations_bounded,
 };
 use serde_json::{Value, json};
 
@@ -112,6 +113,40 @@ async fn custom_envelope_config_round_trips_through_serde() -> Result<(), Kernel
     let json = serde_json::to_string(&envelope).expect("serialize");
     let parsed: ToolResultEnvelope = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(parsed, envelope);
+    Ok(())
+}
+
+#[tokio::test]
+async fn bounded_dispatch_returns_envelopes_without_changing_raw_dispatch()
+-> Result<(), KernelError> {
+    let tools = ToolRegistry::new();
+    tools.register(oversized_tool());
+
+    let invocations = vec![ToolInvocation::new("diagnostics.big_payload", json!({}))?];
+    let config = ToolResultEnvelopeConfig::new(64).with_max_array_items(4);
+    let bounded = dispatch_tool_invocations_bounded(&tools, &invocations, &config).await?;
+
+    assert_eq!(bounded.len(), 1);
+    assert_eq!(bounded[0].invocation.name, "diagnostics.big_payload");
+    assert!(bounded[0].envelope.truncated);
+    assert_eq!(
+        bounded[0].envelope.payload["blob"]
+            .as_str()
+            .expect("blob")
+            .chars()
+            .count(),
+        64
+    );
+    assert_eq!(
+        bounded[0].envelope.payload["items"]
+            .as_array()
+            .expect("items")
+            .len(),
+        4
+    );
+
+    let raw = dispatch_tool_invocations(&tools, &invocations).await?;
+    assert_eq!(raw[0].output["blob"].as_str().expect("raw").len(), 10_000);
     Ok(())
 }
 
