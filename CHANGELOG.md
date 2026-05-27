@@ -11,6 +11,12 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/ForeverAngry/rig-compose/compare/v0.4.0...v0.4.1) - 2026-05-27
+
+### Added
+
+- Add descriptor snapshots and bounded dispatch helpers
+
 ### Added
 
 - Add deterministic descriptor snapshots for tools, skills, and in-process
