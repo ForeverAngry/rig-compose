@@ -7,10 +7,24 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::skill::{Skill, SkillId};
 use crate::tool::{Tool, ToolName};
+
+/// Snapshot record for a visible skill in a [`SkillRegistry`].
+///
+/// Descriptors are read-only catalog entries for discovery, documentation,
+/// and adapter export. They do not participate in execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillDescriptor {
+    /// Stable skill identifier.
+    pub id: SkillId,
+    /// Human-readable skill description. Empty when the skill does not provide
+    /// one.
+    pub description: String,
+}
 
 #[derive(Debug, Error)]
 pub enum KernelError {
@@ -136,11 +150,24 @@ impl ToolRegistry {
     /// whitelist when present. Used by the MCP loopback transport to
     /// surface a server-side registry to a client.
     pub fn schemas(&self) -> Vec<crate::tool::ToolSchema> {
-        self.inner
+        let mut schemas: Vec<_> = self
+            .inner
             .iter()
             .filter(|e| self.is_authorised(e.key()))
             .map(|e| e.value().schema())
-            .collect()
+            .collect();
+        schemas.sort_by(|left, right| left.name.cmp(&right.name));
+        schemas
+    }
+
+    /// Deterministic catalog snapshot of every visible tool.
+    ///
+    /// Today the execution contract and the discovery descriptor are the same
+    /// [`ToolSchema`](crate::tool::ToolSchema). This method exists so callers
+    /// can ask for a catalog snapshot without depending on implementation
+    /// details of registry storage or iteration order.
+    pub fn descriptors(&self) -> Vec<crate::tool::ToolSchema> {
+        self.schemas()
     }
 }
 
@@ -185,6 +212,20 @@ impl SkillRegistry {
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
+
+    /// Deterministic catalog snapshot of every registered skill.
+    pub fn descriptors(&self) -> Vec<SkillDescriptor> {
+        let mut descriptors: Vec<_> = self
+            .inner
+            .iter()
+            .map(|entry| SkillDescriptor {
+                id: entry.key().clone(),
+                description: entry.value().description().to_string(),
+            })
+            .collect();
+        descriptors.sort_by(|left, right| left.id.cmp(&right.id));
+        descriptors
+    }
 }
 
 #[cfg(test)]
@@ -192,7 +233,10 @@ mod tests {
     use std::sync::Arc;
 
     use crate::tool::{LocalTool, ToolSchema};
-    use crate::{KernelError, Tool, ToolRegistry};
+    use crate::{
+        InvestigationContext, KernelError, Skill, SkillOutcome, SkillRegistry, Tool, ToolRegistry,
+    };
+    use async_trait::async_trait;
     use serde_json::json;
 
     fn echo_tool(name: &str) -> Arc<dyn Tool> {
@@ -235,5 +279,72 @@ mod tests {
             Err(KernelError::ToolNotFound(name)) => assert_eq!(name, "missing"),
             _ => panic!("expected ToolNotFound"),
         }
+    }
+
+    #[test]
+    fn tool_registry_descriptors_are_sorted_and_scoped() {
+        let reg = ToolRegistry::new();
+        reg.register(echo_tool("zeta.tool"));
+        reg.register(echo_tool("alpha.tool"));
+        reg.register(echo_tool("middle.tool"));
+
+        let names: Vec<_> = reg
+            .descriptors()
+            .into_iter()
+            .map(|schema| schema.name)
+            .collect();
+        assert_eq!(names, vec!["alpha.tool", "middle.tool", "zeta.tool"]);
+
+        let scoped = reg.scoped(["zeta.tool", "alpha.tool"]);
+        let scoped_names: Vec<_> = scoped
+            .descriptors()
+            .into_iter()
+            .map(|schema| schema.name)
+            .collect();
+        assert_eq!(scoped_names, vec!["alpha.tool", "zeta.tool"]);
+    }
+
+    struct DescribedSkill {
+        id: &'static str,
+        description: &'static str,
+    }
+
+    #[async_trait]
+    impl Skill for DescribedSkill {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn description(&self) -> &str {
+            self.description
+        }
+
+        async fn execute(
+            &self,
+            _ctx: &mut InvestigationContext,
+            _tools: &ToolRegistry,
+        ) -> Result<SkillOutcome, KernelError> {
+            Ok(SkillOutcome::noop())
+        }
+    }
+
+    #[test]
+    fn skill_registry_descriptors_are_sorted() {
+        let reg = SkillRegistry::new();
+        reg.register(Arc::new(DescribedSkill {
+            id: "zeta.skill",
+            description: "last",
+        }));
+        reg.register(Arc::new(DescribedSkill {
+            id: "alpha.skill",
+            description: "first",
+        }));
+
+        let descriptors = reg.descriptors();
+        assert_eq!(descriptors.len(), 2);
+        assert_eq!(descriptors[0].id, "alpha.skill");
+        assert_eq!(descriptors[0].description, "first");
+        assert_eq!(descriptors[1].id, "zeta.skill");
+        assert_eq!(descriptors[1].description, "last");
     }
 }

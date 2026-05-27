@@ -41,18 +41,25 @@ coordination lives in
 
 - [src/skill.rs](src/skill.rs): `Skill`, `SkillId`, and `SkillOutcome`. Skills are stateless and decide whether they apply to an `InvestigationContext`.
 - [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, `LocalTool`, `ToolResultEnvelope`, and `ToolResultEnvelopeConfig`. Tools are the side-effectful async boundary; envelopes provide deterministic bounding metadata for large tool results.
-- [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views.
+- [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, `SkillDescriptor`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views, and descriptor snapshots expose visible capabilities in deterministic order.
 - [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `AgentLifecycleHook`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context and can notify producer-neutral hooks around step and skill execution.
 - [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction` for skill-chain state, plus `ContextItem`, `ContextPack`, `ContextPackConfig`, and `ContextSourceKind` for provider-neutral context-window planning.
-- [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
+- [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateDescriptor`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
 - [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
 - [src/budget.rs](src/budget.rs): `BudgetGuard`, `TokenBudget`, `AtomicBudget`, `AtomicTokenBudget`, `TokenReservation`, `TokenRefund`, and `BudgetError`. These meter rows, dispatch slots, and prompt-token reservations.
-- [src/normalizer.rs](src/normalizer.rs): `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`, `ToolInvocation`, and `dispatch_tool_invocations`. These normalize LFM/MLX text markers, OpenAI Responses `function_call` output, and OpenAI Chat Completions `tool_calls` into the same dispatchable shape.
+- [src/normalizer.rs](src/normalizer.rs): `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`, `ToolInvocation`, `ToolInvocationResult`, `BoundedToolInvocationResult`, and the dispatch helpers. These normalize LFM/MLX text markers, OpenAI Responses `function_call` output, and OpenAI Chat Completions `tool_calls` into the same dispatchable shape.
 - [src/workflow.rs](src/workflow.rs): `Workflow`, the async workflow composition trait.
 - [src/instructions.rs](src/instructions.rs): `Instructions`, a serializable instruction bundle with examples, response schema, and metadata.
 - [src/manifest.rs](src/manifest.rs): `AgentManifest`, `ModelSpec`, `ToolSpec`, `DelegateSpec`, and materialization helpers, gated behind `manifest`.
 
 The crate-level architecture rule is simple: `Skill` is pure decision logic, `Tool` is the side-effect boundary, registries own lookup, and agents compose registered pieces without hard-coding concrete implementations.
+
+Registries also expose deterministic descriptor snapshots for discovery and
+adapter export. `ToolRegistry::descriptors()` returns the visible tool schemas,
+honoring scoped authorization; `SkillRegistry::descriptors()` returns skill IDs
+and descriptions; `DelegateRegistry::descriptors()` returns registered
+in-process delegate names. These snapshots are read-only catalog records and do
+not change dispatch behavior.
 
 ## Integration With Rig
 
@@ -152,6 +159,15 @@ invocation, skip it with a synthetic result, or terminate the loop before the
 tool runs. Hooks receive only kernel shapes (`ToolInvocation` and
 `ToolInvocationResult`), keeping provider, MCP, memory, approval, and telemetry
 implementations downstream.
+
+Use `dispatch_tool_invocations_bounded` or
+`dispatch_tool_invocations_with_hooks_bounded` at the model-visible boundary
+when tool output should be clamped before it enters a prompt. These helpers run
+the same dispatch path and return `BoundedToolInvocationResult` values whose
+`ToolResultEnvelope` records the bounded payload, truncation flag, omitted
+character/item counts, and first continuation token. The raw dispatch helpers
+remain available for hosts that need to store or inspect full results outside
+the prompt.
 
 `GenericAgentBuilder::with_lifecycle_hook` provides the same downstream-owned
 extension point for the agent loop itself. `AgentLifecycleHook` observes step

@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::agent::Agent;
@@ -30,6 +31,13 @@ use crate::tool::{Tool, ToolSchema};
 /// Stable key for a delegate executor. Manifests usually reference this
 /// through `delegates[].agent`; when omitted, `delegates[].name` is used.
 pub type DelegateName = String;
+
+/// Snapshot record for a registered in-process delegate executor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DelegateDescriptor {
+    /// Stable delegate name used by hosts and manifests.
+    pub name: DelegateName,
+}
 
 /// Async implementation behind a delegate tool.
 #[async_trait]
@@ -62,6 +70,19 @@ impl DelegateRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
+    }
+
+    /// Deterministic catalog snapshot of every registered delegate executor.
+    pub fn descriptors(&self) -> Vec<DelegateDescriptor> {
+        let mut descriptors: Vec<_> = self
+            .inner
+            .iter()
+            .map(|entry| DelegateDescriptor {
+                name: entry.key().clone(),
+            })
+            .collect();
+        descriptors.sort_by(|left, right| left.name.cmp(&right.name));
+        descriptors
     }
 }
 
@@ -228,5 +249,26 @@ mod tests {
         assert_eq!(out["agent"], "child");
         assert_eq!(out["result"]["skills_run"][0], "test.confidence");
         assert!((out["result"]["confidence"].as_f64().unwrap() - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn delegate_registry_descriptors_are_sorted() {
+        let registry = DelegateRegistry::new();
+        let skills = SkillRegistry::new();
+        let tools = ToolRegistry::new();
+        let agent = GenericAgent::builder("child")
+            .build(&skills, &tools)
+            .expect("agent");
+        let executor = InProcessAgentDelegate::arc(Arc::new(agent));
+
+        registry.register("zeta.delegate", executor.clone());
+        registry.register("alpha.delegate", executor);
+
+        let names: Vec<_> = registry
+            .descriptors()
+            .into_iter()
+            .map(|descriptor| descriptor.name)
+            .collect();
+        assert_eq!(names, vec!["alpha.delegate", "zeta.delegate"]);
     }
 }

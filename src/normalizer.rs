@@ -29,7 +29,7 @@ use serde_json::{Map, Value};
 
 use crate::registry::KernelError;
 use crate::registry::ToolRegistry;
-use crate::tool::ToolName;
+use crate::tool::{ToolName, ToolResultEnvelope, ToolResultEnvelopeConfig};
 use crate::trace::{DispatchTrace, DispatchTraceEvent, TracedAction, TracedOutcome};
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -69,6 +69,20 @@ pub struct ToolInvocationResult {
     pub invocation: ToolInvocation,
     /// The JSON result returned by the invoked tool.
     pub output: Value,
+}
+
+/// Bounded result of dispatching one normalized [`ToolInvocation`].
+///
+/// This is the model-visible companion to [`ToolInvocationResult`]: dispatch
+/// still runs through the same registry path, but the returned payload is
+/// wrapped in a [`ToolResultEnvelope`] so callers can see truncation metadata
+/// and continuation tokens before placing tool output into a prompt.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoundedToolInvocationResult {
+    /// The normalized invocation that was dispatched.
+    pub invocation: ToolInvocation,
+    /// Bounded tool output plus deterministic truncation metadata.
+    pub envelope: ToolResultEnvelope,
 }
 
 /// Decision returned by a [`ToolDispatchHook`] before a tool invocation runs.
@@ -174,6 +188,35 @@ pub async fn dispatch_tool_invocations_with_hooks(
     dispatch_inner(tools, invocations, hooks, None).await
 }
 
+/// Dispatch normalized tool invocations and bound every result with `config`.
+///
+/// Existing dispatch helpers intentionally return raw tool output so hosts can
+/// decide where and how to preserve full results. This helper is for the
+/// prompt/model boundary: it applies [`ToolResultEnvelope`] after successful
+/// dispatch and returns the bounded, replayable result records.
+pub async fn dispatch_tool_invocations_bounded(
+    tools: &ToolRegistry,
+    invocations: &[ToolInvocation],
+    config: &ToolResultEnvelopeConfig,
+) -> Result<Vec<BoundedToolInvocationResult>, KernelError> {
+    dispatch_tool_invocations_with_hooks_bounded(tools, invocations, &[], config).await
+}
+
+/// Dispatch normalized tool invocations with hooks and bound every result.
+///
+/// Hooks observe the raw [`ToolInvocationResult`] before bounding so accounting
+/// and audit layers can decide whether they need full output. The returned
+/// value is the bounded, model-visible projection.
+pub async fn dispatch_tool_invocations_with_hooks_bounded(
+    tools: &ToolRegistry,
+    invocations: &[ToolInvocation],
+    hooks: &[&dyn ToolDispatchHook],
+    config: &ToolResultEnvelopeConfig,
+) -> Result<Vec<BoundedToolInvocationResult>, KernelError> {
+    let results = dispatch_tool_invocations_with_hooks(tools, invocations, hooks).await?;
+    Ok(bound_invocation_results(results, config))
+}
+
 /// Dispatch normalized tool invocations and record a [`DispatchTrace`].
 ///
 /// Behaves identically to [`dispatch_tool_invocations_with_hooks`], but appends
@@ -188,6 +231,19 @@ pub async fn dispatch_tool_invocations_with_trace(
     trace: &DispatchTrace,
 ) -> Result<Vec<ToolInvocationResult>, KernelError> {
     dispatch_inner(tools, invocations, hooks, Some(trace)).await
+}
+
+fn bound_invocation_results(
+    results: Vec<ToolInvocationResult>,
+    config: &ToolResultEnvelopeConfig,
+) -> Vec<BoundedToolInvocationResult> {
+    results
+        .into_iter()
+        .map(|result| BoundedToolInvocationResult {
+            invocation: result.invocation,
+            envelope: ToolResultEnvelope::bound(result.output, config),
+        })
+        .collect()
 }
 
 async fn dispatch_inner(

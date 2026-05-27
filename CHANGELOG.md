@@ -13,6 +13,16 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ### Added
 
+- Add deterministic descriptor snapshots for tools, skills, and in-process
+  delegates. `ToolRegistry::descriptors()` returns the visible tool schemas in
+  stable name order, `SkillRegistry::descriptors()` returns `SkillDescriptor`
+  records, and `DelegateRegistry::descriptors()` returns `DelegateDescriptor`
+  records for host-side discovery and adapter export.
+- Add bounded dispatch helpers for model-visible tool results:
+  `dispatch_tool_invocations_bounded` and
+  `dispatch_tool_invocations_with_hooks_bounded` return
+  `BoundedToolInvocationResult` records with `ToolResultEnvelope` metadata
+  while preserving the existing raw dispatch helpers.
 - Add reliability primitives in a new `reliability` module: `RetryClass`
   (`Transient` / `Permanent`), `RetryClassifier` trait with
   `DefaultRetryClassifier` covering every `KernelError` variant,

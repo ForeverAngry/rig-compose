@@ -77,7 +77,8 @@ pub use context::{
 };
 pub use coordinator::{CoordinatorAgent, CoordinatorBuilder, RoutingRule};
 pub use delegate::{
-    DelegateExecutor, DelegateName, DelegateRegistry, DelegateTool, InProcessAgentDelegate,
+    DelegateDescriptor, DelegateExecutor, DelegateName, DelegateRegistry, DelegateTool,
+    InProcessAgentDelegate,
 };
 pub use instructions::Instructions;
 #[cfg(feature = "manifest")]
@@ -87,12 +88,13 @@ pub use manifest::{
     materialize_local_and_delegate_tools_with_delegates,
 };
 pub use normalizer::{
-    LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer, ToolDispatchAction,
-    ToolDispatchHook, ToolInvocation, ToolInvocationOutcome, ToolInvocationResult,
-    dispatch_tool_invocations, dispatch_tool_invocations_with_hooks,
+    BoundedToolInvocationResult, LfmNormalizer, StructuredToolCallNormalizer, ToolCallNormalizer,
+    ToolDispatchAction, ToolDispatchHook, ToolInvocation, ToolInvocationOutcome,
+    ToolInvocationResult, dispatch_tool_invocations, dispatch_tool_invocations_bounded,
+    dispatch_tool_invocations_with_hooks, dispatch_tool_invocations_with_hooks_bounded,
     dispatch_tool_invocations_with_trace,
 };
-pub use registry::{KernelError, SkillRegistry, ToolRegistry};
+pub use registry::{KernelError, SkillDescriptor, SkillRegistry, ToolRegistry};
 pub use reliability::{
     DefaultRetryClassifier, HistoryEntry, RetryClass, RetryClassifier, ToolCallFingerprint,
     repair_history,

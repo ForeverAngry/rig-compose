@@ -24,7 +24,7 @@ pub type ToolName = String;
 /// uses them to generate `rig` / MCP tool definitions automatically. We do
 /// **not** validate against them at the kernel — validation is the tool's
 /// responsibility — but downstream MCP exporters need them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSchema {
     pub name: ToolName,
     pub description: String,
