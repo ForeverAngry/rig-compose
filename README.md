@@ -20,11 +20,17 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 
 ## Status
 
-- Crate version: `0.4.0`.
+- Crate version: `0.4.2`.
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
-- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, agent lifecycle hooks, provider-neutral context packing primitives, typed context provenance helpers, and bounded tool-result envelopes.
+- The 0.4.x line shipped the `budget` module, drop-safe `TokenReservation`
+  refunds, `KernelError::ToolNotApplicable` for soft tool failures,
+  provider-neutral tool-call normalization and dispatch helpers, dispatch and
+  agent-lifecycle hooks, context packing primitives with typed provenance,
+  bounded tool-result envelopes, retry classification with deterministic tool
+  fingerprints, repair-history rewriting, and the `DispatchTrace` recording
+  surface. See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown.
 
 The crate-local maturity plan lives in [ROADMAP.md](ROADMAP.md). Cross-crate
 coordination lives in
@@ -47,9 +53,13 @@ coordination lives in
 - [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateDescriptor`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
 - [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
 - [src/budget.rs](src/budget.rs): `BudgetGuard`, `TokenBudget`, `AtomicBudget`, `AtomicTokenBudget`, `TokenReservation`, `TokenRefund`, and `BudgetError`. These meter rows, dispatch slots, and prompt-token reservations.
-- [src/normalizer.rs](src/normalizer.rs): `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`, `ToolInvocation`, `ToolInvocationResult`, `BoundedToolInvocationResult`, and the dispatch helpers. These normalize LFM/MLX text markers, OpenAI Responses `function_call` output, and OpenAI Chat Completions `tool_calls` into the same dispatchable shape.
+- [src/normalizer.rs](src/normalizer.rs): `ToolCallNormalizer`, `LfmNormalizer`, `StructuredToolCallNormalizer`, `ToolInvocation`, `ToolInvocationResult`, `BoundedToolInvocationResult`, `ToolDispatchAction`, `ToolDispatchHook`, and the dispatch helpers. These normalize LFM/MLX text markers, OpenAI Responses `function_call` output, and OpenAI Chat Completions `tool_calls` into the same dispatchable shape, and let callers veto, skip, or terminate dispatches via hooks.
+- [src/reliability.rs](src/reliability.rs): `RetryClass`, `RetryClassifier`, `DefaultRetryClassifier`, `ToolCallFingerprint`, `HistoryEntry`, and `repair_history` for classifying tool-call failures, building deterministic invocation fingerprints, and rewriting model history so retries replace prior failed attempts instead of stacking.
+- [src/trace.rs](src/trace.rs): `DispatchTrace`, `DispatchTraceEvent`, `TracedAction`, and `TracedOutcome` — the per-dispatch trace recorder consumed by `dispatch_normalized_traced` for auditing hook decisions, reservation outcomes, repairs, and final tool results.
 - [src/workflow.rs](src/workflow.rs): `Workflow`, the async workflow composition trait.
 - [src/instructions.rs](src/instructions.rs): `Instructions`, a serializable instruction bundle with examples, response schema, and metadata.
+- [src/tool.rs](src/tool.rs): `bound_tool_result`, the helper that applies a `ToolResultEnvelopeConfig` to large tool outputs and returns deterministic truncation metadata at the dispatch/model boundary.
+- [src/context.rs](src/context.rs): `ContextOmissionReason` and `OmittedContextItem` for typed audit records of items dropped from a `ContextPack` because of budget or item caps.
 - [src/manifest.rs](src/manifest.rs): `AgentManifest`, `ModelSpec`, `ToolSpec`, `DelegateSpec`, and materialization helpers, gated behind `manifest`.
 
 The crate-level architecture rule is simple: `Skill` is pure decision logic, `Tool` is the side-effect boundary, registries own lookup, and agents compose registered pieces without hard-coding concrete implementations.
