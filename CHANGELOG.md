@@ -11,6 +11,8 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/ForeverAngry/rig-compose/compare/v0.4.1...v0.4.2) - 2026-05-28
+
 ### Added
 
 - Add `ContextProvenance` and `ContextProjectionState` as typed helpers for
