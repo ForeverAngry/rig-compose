@@ -18,9 +18,9 @@
 use std::sync::Arc;
 
 use rig_compose::{
-    KernelError, LocalTool, ToolInvocation, ToolRegistry, ToolResultEnvelope,
-    ToolResultEnvelopeConfig, ToolSchema, bound_tool_result, dispatch_tool_invocations,
-    dispatch_tool_invocations_bounded,
+    KernelError, LocalTool, RedactionPolicy, ToolInvocation, ToolRegistry, ToolResultEnvelope,
+    ToolResultEnvelopeConfig, ToolResultOmissionReason, ToolSchema, bound_tool_result,
+    decode_tool_result_page_token, dispatch_tool_invocations, dispatch_tool_invocations_bounded,
 };
 use serde_json::{Value, json};
 
@@ -67,6 +67,12 @@ async fn dispatch_then_bound_tool_result_clamps_oversized_payload() -> Result<()
     assert!(envelope.omitted_chars > 0);
     assert!(envelope.omitted_items > 0);
     assert!(envelope.page_token.is_some());
+    assert!(envelope.omitted_segments.iter().any(|segment| {
+        segment.pointer == "/blob" && segment.reason == ToolResultOmissionReason::StringChars
+    }));
+    assert!(envelope.omitted_segments.iter().any(|segment| {
+        segment.pointer == "/items" && segment.reason == ToolResultOmissionReason::ArrayItems
+    }));
     assert_eq!(
         envelope.payload["blob"]
             .as_str()
@@ -114,6 +120,66 @@ async fn custom_envelope_config_round_trips_through_serde() -> Result<(), Kernel
     let parsed: ToolResultEnvelope = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(parsed, envelope);
     Ok(())
+}
+
+#[test]
+fn omitted_segments_disambiguate_two_oversized_fields() {
+    let config = ToolResultEnvelopeConfig::new(3);
+    let envelope = ToolResultEnvelope::bound(json!({"left": "abcdef", "right": "ghijkl"}), &config);
+
+    let tokens: Vec<&str> = envelope
+        .omitted_segments
+        .iter()
+        .map(|segment| segment.page_token.as_str())
+        .collect();
+
+    assert_eq!(tokens.len(), 2);
+    assert_ne!(tokens[0], tokens[1]);
+    assert!(tokens.iter().any(|token| {
+        decode_tool_result_page_token(token).is_some_and(|decoded| decoded.pointer == "/left")
+    }));
+    assert!(tokens.iter().any(|token| {
+        decode_tool_result_page_token(token).is_some_and(|decoded| decoded.pointer == "/right")
+    }));
+}
+
+#[test]
+fn redaction_runs_before_size_bounding() {
+    let config = ToolResultEnvelopeConfig::new(6).with_redaction_policy(
+        RedactionPolicy::deny_pointers(["/credentials/token"]).with_default_replacement("[secret]"),
+    );
+    let envelope = ToolResultEnvelope::bound(
+        json!({"credentials": {"token": "very-sensitive-token"}, "body": "abcdefghi"}),
+        &config,
+    );
+
+    assert_eq!(envelope.payload["credentials"]["token"], json!("[secret]"));
+    assert_eq!(envelope.redacted_values, 1);
+    assert_eq!(envelope.payload["body"], json!("abcdef"));
+    assert!(
+        !envelope
+            .omitted_segments
+            .iter()
+            .any(|segment| segment.pointer == "/credentials/token")
+    );
+}
+
+#[test]
+fn total_payload_budget_omits_later_fields() {
+    let config = ToolResultEnvelopeConfig::new(100).with_max_total_bytes(32);
+    let envelope = ToolResultEnvelope::bound(
+        json!({"first": "kept", "second": "kept-too", "third": "omitted"}),
+        &config,
+    );
+
+    assert!(envelope.truncated);
+    assert!(envelope.omitted_values > 0);
+    assert!(envelope.omitted_segments.iter().any(|segment| {
+        segment.reason == ToolResultOmissionReason::TotalBytes
+            && decode_tool_result_page_token(&segment.page_token).is_some_and(|decoded| {
+                decoded.reason == ToolResultOmissionReason::TotalBytes && decoded.limit == 32
+            })
+    }));
 }
 
 #[tokio::test]

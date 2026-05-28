@@ -11,6 +11,13 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add `ToolResultEnvelope` redaction policies, path-aware omitted-segment
+  continuation tokens, and total serialized-byte bounding so model-visible tool
+  results can be redacted and globally bounded before downstream prompt, trace,
+  or MCP cache use.
+
 ## [0.4.3](https://github.com/ForeverAngry/rig-compose/compare/v0.4.2...v0.4.3) - 2026-05-28
 
 ### Documentation
