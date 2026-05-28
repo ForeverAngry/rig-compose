@@ -7,8 +7,8 @@
 //! `rig-ecosystem/docs/development-standards.md`.
 
 use rig_compose::{
-    ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextSourceKind,
-    ToolInvocation, ToolInvocationResult,
+    ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextProjectionState,
+    ContextProvenance, ContextSourceKind, ToolInvocation, ToolInvocationResult,
 };
 use serde_json::json;
 
@@ -31,6 +31,59 @@ fn context_item_defaults_estimated_chars_and_preserves_metadata() {
     assert_eq!(item.estimated_chars, item.text.chars().count());
     assert_eq!(item.provenance["frame_id"], json!(42));
     assert_eq!(item.metadata["slot"], json!("location"));
+}
+
+#[test]
+fn context_item_round_trips_typed_provenance() {
+    let item = ContextItem::new(
+        ContextSourceKind::Memory,
+        "memory/frame/42",
+        "prior incident from host-7",
+    )
+    .with_context_provenance(
+        ContextProvenance::new()
+            .with_source_uri("memory://incident/42")
+            .with_principal("host-7")
+            .with_scope("prod")
+            .with_retention_tier("warm")
+            .with_recorded_at_millis(1_700_000_000_000)
+            .with_effective_at_millis(1_700_000_000_001)
+            .with_confidence(0.91)
+            .with_version_key("host-7:incident:asn")
+            .with_source_frame_id("42")
+            .with_projection_state(ContextProjectionState::Candidate)
+            .with_reason("lexical_recall"),
+    );
+
+    assert_eq!(item.provenance["source_uri"], json!("memory://incident/42"));
+    assert_eq!(item.provenance["projection_state"], json!("candidate"));
+
+    let decoded = item
+        .context_provenance()
+        .expect("typed provenance should round-trip");
+    assert_eq!(decoded.source_uri.as_deref(), Some("memory://incident/42"));
+    assert_eq!(decoded.principal.as_deref(), Some("host-7"));
+    assert_eq!(decoded.scope.as_deref(), Some("prod"));
+    assert_eq!(decoded.retention_tier.as_deref(), Some("warm"));
+    assert_eq!(decoded.recorded_at_millis, Some(1_700_000_000_000));
+    assert_eq!(decoded.effective_at_millis, Some(1_700_000_000_001));
+    assert_eq!(decoded.confidence, Some(0.91));
+    assert_eq!(decoded.version_key.as_deref(), Some("host-7:incident:asn"));
+    assert_eq!(decoded.source_frame_id, Some(json!("42")));
+    assert_eq!(
+        decoded.projection_state,
+        Some(ContextProjectionState::Candidate)
+    );
+    assert_eq!(decoded.reason.as_deref(), Some("lexical_recall"));
+}
+
+#[test]
+fn context_item_decodes_missing_provenance_as_empty() {
+    let decoded = fixture(0, "empty provenance")
+        .context_provenance()
+        .expect("null provenance should decode as empty provenance");
+
+    assert_eq!(decoded, ContextProvenance::default());
 }
 
 #[test]

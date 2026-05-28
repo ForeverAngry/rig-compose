@@ -36,6 +36,198 @@ pub enum ContextSourceKind {
     Other(String),
 }
 
+/// Provider-neutral lifecycle state for a projected context item.
+///
+/// Producer crates can attach this to [`ContextProvenance`] when the host needs
+/// to explain why a candidate was expanded, skipped, suppressed, superseded, or
+/// escalated before it reached [`ContextPack::pack`]. The packer still records
+/// its own final [`ContextOmissionReason`] for items omitted by budget or item
+/// count.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextProjectionState {
+    /// Candidate is eligible for packing.
+    Candidate,
+    /// Candidate was expanded from a source item into derived context.
+    Expanded,
+    /// Candidate was skipped before packing.
+    Skipped,
+    /// Candidate was suppressed by caller policy.
+    Suppressed,
+    /// Candidate was rejected by caller policy.
+    Rejected,
+    /// Candidate was superseded by a newer or more authoritative item.
+    Superseded,
+    /// Candidate is stale relative to a newer version.
+    Stale,
+    /// Candidate conflicts with another item and needs host resolution.
+    Conflict,
+    /// Candidate was escalated for higher-level handling.
+    Escalated,
+    /// Caller-defined state.
+    Other(String),
+}
+
+/// Shared provenance keys for context projected by memory, resource, graph, or
+/// tool-result producers.
+///
+/// `rig-compose` continues to store provenance on [`ContextItem`] as JSON so
+/// downstream crates can attach crate-specific fields without depending on each
+/// other. This helper gives those crates a common vocabulary for the fields that
+/// matter to replay, evaluation, and omission explanations.
+///
+/// ```rust
+/// use rig_compose::{ContextItem, ContextProvenance, ContextSourceKind};
+///
+/// let provenance = ContextProvenance::new()
+///     .with_source_uri("memory://incident/42")
+///     .with_principal("alice")
+///     .with_scope("workspace")
+///     .with_confidence(0.92);
+///
+/// let item = ContextItem::new(ContextSourceKind::Memory, "frame-42", "prior incident")
+///     .with_context_provenance(provenance);
+///
+/// assert_eq!(
+///     item.context_provenance().unwrap().source_uri.as_deref(),
+///     Some("memory://incident/42")
+/// );
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContextProvenance {
+    /// URI or locator for the original source record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_uri: Option<String>,
+    /// Principal, actor, tenant, or subject associated with the source record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub principal: Option<String>,
+    /// Caller-defined scope such as tenant, workspace, profile, or project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Retention or archive tier associated with the source record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retention_tier: Option<String>,
+    /// Milliseconds since the Unix epoch when the source record was recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recorded_at_millis: Option<i64>,
+    /// Milliseconds since the Unix epoch when the source record became
+    /// effective for supersession or freshness comparisons.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_at_millis: Option<i64>,
+    /// Source-provided confidence score, when it is distinct from
+    /// [`ContextItem::score`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    /// Stable key used to compare competing versions of the same fact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_key: Option<String>,
+    /// Source frame/document id used by memory stores and eval fixtures.
+    ///
+    /// Stored as JSON so existing producers can keep numeric frame ids while
+    /// others use string document keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_frame_id: Option<Value>,
+    /// Lifecycle state assigned before the packer makes final budget decisions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection_state: Option<ContextProjectionState>,
+    /// Machine-readable reason for the projection state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl ContextProvenance {
+    /// Create empty provenance ready for builder-style population.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set [`Self::source_uri`].
+    #[must_use]
+    pub fn with_source_uri(mut self, source_uri: impl Into<String>) -> Self {
+        self.source_uri = Some(source_uri.into());
+        self
+    }
+
+    /// Set [`Self::principal`].
+    #[must_use]
+    pub fn with_principal(mut self, principal: impl Into<String>) -> Self {
+        self.principal = Some(principal.into());
+        self
+    }
+
+    /// Set [`Self::scope`].
+    #[must_use]
+    pub fn with_scope(mut self, scope: impl Into<String>) -> Self {
+        self.scope = Some(scope.into());
+        self
+    }
+
+    /// Set [`Self::retention_tier`].
+    #[must_use]
+    pub fn with_retention_tier(mut self, retention_tier: impl Into<String>) -> Self {
+        self.retention_tier = Some(retention_tier.into());
+        self
+    }
+
+    /// Set [`Self::recorded_at_millis`].
+    #[must_use]
+    pub fn with_recorded_at_millis(mut self, recorded_at_millis: i64) -> Self {
+        self.recorded_at_millis = Some(recorded_at_millis);
+        self
+    }
+
+    /// Set [`Self::effective_at_millis`].
+    #[must_use]
+    pub fn with_effective_at_millis(mut self, effective_at_millis: i64) -> Self {
+        self.effective_at_millis = Some(effective_at_millis);
+        self
+    }
+
+    /// Set [`Self::confidence`].
+    #[must_use]
+    pub fn with_confidence(mut self, confidence: f64) -> Self {
+        self.confidence = Some(confidence);
+        self
+    }
+
+    /// Set [`Self::version_key`].
+    #[must_use]
+    pub fn with_version_key(mut self, version_key: impl Into<String>) -> Self {
+        self.version_key = Some(version_key.into());
+        self
+    }
+
+    /// Set [`Self::source_frame_id`].
+    #[must_use]
+    pub fn with_source_frame_id(mut self, source_frame_id: impl Into<String>) -> Self {
+        self.source_frame_id = Some(Value::String(source_frame_id.into()));
+        self
+    }
+
+    /// Set [`Self::source_frame_id`] from an existing JSON value.
+    #[must_use]
+    pub fn with_source_frame_id_value(mut self, source_frame_id: Value) -> Self {
+        self.source_frame_id = Some(source_frame_id);
+        self
+    }
+
+    /// Set [`Self::projection_state`].
+    #[must_use]
+    pub fn with_projection_state(mut self, projection_state: ContextProjectionState) -> Self {
+        self.projection_state = Some(projection_state);
+        self
+    }
+
+    /// Set [`Self::reason`].
+    #[must_use]
+    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+}
+
 /// One ranked piece of context that may be packed into a bounded model window.
 ///
 /// `ContextItem` is intentionally backend-neutral. Memory crates, MCP/resource
@@ -123,6 +315,24 @@ impl ContextItem {
     pub fn with_provenance(mut self, provenance: Value) -> Self {
         self.provenance = provenance;
         self
+    }
+
+    /// Attach source-specific provenance using the shared typed vocabulary.
+    #[must_use]
+    pub fn with_context_provenance(mut self, provenance: ContextProvenance) -> Self {
+        self.provenance = serde_json::to_value(provenance).unwrap_or(Value::Null);
+        self
+    }
+
+    /// Decode [`Self::provenance`] as the shared typed vocabulary.
+    ///
+    /// Returns an empty [`ContextProvenance`] when no provenance was attached.
+    pub fn context_provenance(&self) -> serde_json::Result<ContextProvenance> {
+        if self.provenance.is_null() {
+            Ok(ContextProvenance::default())
+        } else {
+            serde_json::from_value(self.provenance.clone())
+        }
     }
 
     /// Attach caller-defined metadata.

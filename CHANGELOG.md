@@ -11,6 +11,15 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add `ContextProvenance` and `ContextProjectionState` as typed helpers for
+  the existing `ContextItem::provenance` JSON field, giving downstream memory,
+  resource, graph, and eval producers stable keys for source URI, principal,
+  scope, retention tier, timestamps, confidence, version keys, source frame ids,
+  projection state, and machine-readable reasons without adding new
+  cross-crate dependencies.
+
 ## [0.4.1](https://github.com/ForeverAngry/rig-compose/compare/v0.4.0...v0.4.1) - 2026-05-27
 
 ### Added
