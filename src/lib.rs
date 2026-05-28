@@ -102,8 +102,9 @@ pub use reliability::{
 };
 pub use skill::{Skill, SkillId, SkillOutcome};
 pub use tool::{
-    LocalTool, Tool, ToolName, ToolResultEnvelope, ToolResultEnvelopeConfig, ToolSchema,
-    bound_tool_result,
+    LocalTool, OmittedSegment, RedactionPolicy, RedactionRule, Tool, ToolName, ToolResultEnvelope,
+    ToolResultEnvelopeConfig, ToolResultOmissionReason, ToolResultPageToken, ToolSchema,
+    bound_tool_result, decode_tool_result_page_token,
 };
 pub use trace::{DispatchTrace, DispatchTraceEvent, TracedAction, TracedOutcome};
 pub use workflow::Workflow;

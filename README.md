@@ -175,9 +175,11 @@ Use `dispatch_tool_invocations_bounded` or
 when tool output should be clamped before it enters a prompt. These helpers run
 the same dispatch path and return `BoundedToolInvocationResult` values whose
 `ToolResultEnvelope` records the bounded payload, truncation flag, omitted
-character/item counts, and first continuation token. The raw dispatch helpers
-remain available for hosts that need to store or inspect full results outside
-the prompt.
+character/item/value counts, redaction count, omitted-segment JSON Pointers,
+and opaque continuation tokens. Redaction runs before truncation and total-size
+bounding so sensitive fields are replaced before anything reaches a prompt,
+trace, or MCP cache. The raw dispatch helpers remain available for hosts that
+need to store or inspect full results outside the prompt.
 
 `GenericAgentBuilder::with_lifecycle_hook` provides the same downstream-owned
 extension point for the agent loop itself. `AgentLifecycleHook` observes step
