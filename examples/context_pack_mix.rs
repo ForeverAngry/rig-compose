@@ -7,7 +7,10 @@
 //! `rig_memvid::projection::search_hits_to_context_items` and
 //! `rig_resources::projection::*`.
 
-use rig_compose::{ContextItem, ContextPack, ContextPackConfig, ContextSourceKind};
+use rig_compose::{
+    ContextItem, ContextPack, ContextPackConfig, ContextProjectionState, ContextProvenance,
+    ContextSourceKind,
+};
 use serde_json::json;
 
 fn memvid_projection_output() -> Vec<ContextItem> {
@@ -19,11 +22,15 @@ fn memvid_projection_output() -> Vec<ContextItem> {
         )
         .with_rank(0)
         .with_score(0.93)
-        .with_provenance(json!({
-            "resource": "memvid.search",
-            "frame_id": 42,
-            "uri": "memory://incident/42"
-        })),
+        .with_context_provenance(
+            ContextProvenance::new()
+                .with_source_uri("memory://incident/42")
+                .with_source_frame_id("42")
+                .with_confidence(0.93)
+                .with_version_key("incident:host-7:asn")
+                .with_projection_state(ContextProjectionState::Candidate),
+        )
+        .with_metadata(json!({ "resource": "memvid.search" })),
         ContextItem::new(
             ContextSourceKind::Memory,
             "memvid/card/service-account",
@@ -31,11 +38,14 @@ fn memvid_projection_output() -> Vec<ContextItem> {
         )
         .with_rank(2)
         .with_score(0.74)
-        .with_provenance(json!({
-            "resource": "memvid.card",
-            "entity": "svc-deploy",
-            "slot": "normal_login_source"
-        })),
+        .with_context_provenance(
+            ContextProvenance::new()
+                .with_principal("svc-deploy")
+                .with_scope("prod")
+                .with_confidence(0.74)
+                .with_version_key("svc-deploy:normal_login_source"),
+        )
+        .with_metadata(json!({ "resource": "memvid.card", "slot": "normal_login_source" })),
     ]
 }
 
@@ -48,11 +58,14 @@ fn resources_projection_output() -> Vec<ContextItem> {
         )
         .with_rank(1)
         .with_score(1440.0)
-        .with_provenance(json!({
-            "resource": "baseline",
-            "entity": "host-7",
-            "metric": "egress_fanout"
-        })),
+        .with_context_provenance(
+            ContextProvenance::new()
+                .with_source_uri("baseline://host-7/egress_fanout")
+                .with_principal("host-7")
+                .with_scope("prod")
+                .with_confidence(0.88),
+        )
+        .with_metadata(json!({ "resource": "baseline", "metric": "egress_fanout" })),
         ContextItem::new(
             ContextSourceKind::Resource,
             "graph/host-7",
@@ -60,10 +73,14 @@ fn resources_projection_output() -> Vec<ContextItem> {
         )
         .with_rank(3)
         .with_score(7.0)
-        .with_provenance(json!({
-            "resource": "graph.subgraph",
-            "seed": "host-7"
-        })),
+        .with_context_provenance(
+            ContextProvenance::new()
+                .with_source_uri("graph://host-7")
+                .with_principal("host-7")
+                .with_projection_state(ContextProjectionState::Expanded)
+                .with_reason("multi_hop_neighborhood"),
+        )
+        .with_metadata(json!({ "resource": "graph.subgraph" })),
     ]
 }
 

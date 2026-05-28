@@ -24,7 +24,7 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
-- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, agent lifecycle hooks, provider-neutral context packing primitives, and bounded tool-result envelopes.
+- Current Unreleased work adds the `budget` module, drop-safe `TokenReservation` refunds, `KernelError::ToolNotApplicable` for soft tool failures, provider-neutral tool-call normalization/dispatch helpers, dispatch hooks, agent lifecycle hooks, provider-neutral context packing primitives, typed context provenance helpers, and bounded tool-result envelopes.
 
 The crate-local maturity plan lives in [ROADMAP.md](ROADMAP.md). Cross-crate
 coordination lives in
@@ -43,7 +43,7 @@ coordination lives in
 - [src/tool.rs](src/tool.rs): `Tool`, `ToolSchema`, `ToolName`, `LocalTool`, `ToolResultEnvelope`, and `ToolResultEnvelopeConfig`. Tools are the side-effectful async boundary; envelopes provide deterministic bounding metadata for large tool results.
 - [src/registry.rs](src/registry.rs): `ToolRegistry`, `SkillRegistry`, `SkillDescriptor`, and `KernelError`. Registries hold shared tools and skills; `ToolRegistry::scoped` produces per-agent tool views, and descriptor snapshots expose visible capabilities in deterministic order.
 - [src/agent.rs](src/agent.rs): `Agent`, `AgentId`, `AgentStepResult`, `AgentLifecycleHook`, `GenericAgent`, and `GenericAgentBuilder`. Generic agents run registered skill chains over mutable investigation context and can notify producer-neutral hooks around step and skill execution.
-- [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction` for skill-chain state, plus `ContextItem`, `ContextPack`, `ContextPackConfig`, and `ContextSourceKind` for provider-neutral context-window planning.
+- [src/context.rs](src/context.rs): `InvestigationContext`, `Signal`, `Evidence`, and `NextAction` for skill-chain state, plus `ContextItem`, `ContextPack`, `ContextPackConfig`, `ContextSourceKind`, `ContextProvenance`, and `ContextProjectionState` for provider-neutral context-window planning.
 - [src/delegate.rs](src/delegate.rs): `DelegateExecutor`, `DelegateRegistry`, `DelegateDescriptor`, `DelegateTool`, `DelegateName`, and `InProcessAgentDelegate`. This is the model-driven agent-to-agent delegation path.
 - [src/coordinator.rs](src/coordinator.rs): `CoordinatorAgent`, `CoordinatorBuilder`, and `RoutingRule`. This is deterministic first-match routing for fixed topologies.
 - [src/budget.rs](src/budget.rs): `BudgetGuard`, `TokenBudget`, `AtomicBudget`, `AtomicTokenBudget`, `TokenReservation`, `TokenRefund`, and `BudgetError`. These meter rows, dispatch slots, and prompt-token reservations.
@@ -195,8 +195,18 @@ memory candidate/context-pack work in `rig-memvid`: memory cards, tool results,
 resource lookups, files, and reasoning workspace notes can all project into the
 same packable shape.
 
+`ContextProvenance` gives producer crates a shared vocabulary for common replay
+and evaluation fields such as `source_uri`, `principal`, `scope`,
+`retention_tier`, timestamps, `confidence`, `version_key`, `source_frame_id`,
+`projection_state`, and a machine-readable `reason`. The underlying
+`ContextItem::provenance` field remains JSON so Memvid, MCP, resource, graph,
+and host-specific adapters can attach extra fields without coupling the kernel
+to those crates.
+
 ```rust,no_run
-use rig_compose::{ContextItem, ContextPack, ContextPackConfig, ContextSourceKind};
+use rig_compose::{
+    ContextItem, ContextPack, ContextPackConfig, ContextProvenance, ContextSourceKind,
+};
 
 let memory = ContextItem::new(
     ContextSourceKind::Memory,
@@ -204,7 +214,14 @@ let memory = ContextItem::new(
     "fact alice lives in Berlin",
 )
 .with_rank(0)
-.with_score(9.5);
+.with_score(9.5)
+.with_context_provenance(
+    ContextProvenance::new()
+        .with_source_uri("memory://alice/location")
+        .with_principal("alice")
+        .with_scope("profile")
+        .with_version_key("alice:location"),
+);
 
 let tool_result = ContextItem::new(
     ContextSourceKind::ToolResult,

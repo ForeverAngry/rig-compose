@@ -72,8 +72,9 @@ pub use budget::{
     TokenRefund, TokenReservation,
 };
 pub use context::{
-    ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextSourceKind,
-    Evidence, InvestigationContext, NextAction, OmittedContextItem, Signal,
+    ContextItem, ContextOmissionReason, ContextPack, ContextPackConfig, ContextProjectionState,
+    ContextProvenance, ContextSourceKind, Evidence, InvestigationContext, NextAction,
+    OmittedContextItem, Signal,
 };
 pub use coordinator::{CoordinatorAgent, CoordinatorBuilder, RoutingRule};
 pub use delegate::{
