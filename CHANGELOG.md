@@ -11,6 +11,12 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/ForeverAngry/rig-compose/compare/v0.5.0...v0.5.1) - 2026-05-30
+
+### Documentation
+
+- Align README Status with shipped 0.5.0 envelope hardening ([#28](https://github.com/ForeverAngry/rig-compose/pull/28))
+
 ## [0.5.0](https://github.com/ForeverAngry/rig-compose/compare/v0.4.3...v0.5.0) - 2026-05-28
 
 ### Fixed
