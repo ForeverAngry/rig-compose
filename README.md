@@ -20,7 +20,7 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
 
 ## Status
 
-- Crate version: `0.4.2`.
+- Crate version: `0.5.0`.
 - Rust edition: 2024.
 - MSRV: 1.88.
 - Runtime stance: runtime-agnostic library; `tokio` is used only as a dev-dependency for tests and examples.
@@ -30,7 +30,13 @@ This keeps downstream systems from reimplementing the same coordination pieces: 
   agent-lifecycle hooks, context packing primitives with typed provenance,
   bounded tool-result envelopes, retry classification with deterministic tool
   fingerprints, repair-history rewriting, and the `DispatchTrace` recording
-  surface. See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown.
+  surface.
+- The 0.5.0 release hardens the `ToolResultEnvelope` contract: redaction
+  policies (`RedactionPolicy` / `RedactionRule`), path-aware omitted-segment
+  continuation tokens (`OmittedSegment`), and total serialized-byte bounding
+  so model-visible tool results can be redacted and globally bounded before
+  downstream prompt, trace, or MCP cache use.
+- See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown.
 
 The crate-local maturity plan lives in [ROADMAP.md](ROADMAP.md). Cross-crate
 coordination lives in
