@@ -11,6 +11,16 @@ from [Conventional Commits](https://www.conventionalcommits.org/).
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/ForeverAngry/rig-compose/compare/v0.5.0...v0.5.1) - 2026-06-01
+
+### Added
+
+- *(reliability)* Add StuckLoopHook for repeated dispatch termination ([#30](https://github.com/ForeverAngry/rig-compose/pull/30))
+
+### Documentation
+
+- Align README Status with shipped 0.5.0 envelope hardening ([#28](https://github.com/ForeverAngry/rig-compose/pull/28))
+
 ### Added
 
 - `StuckLoopHook`: a new `ToolDispatchHook` to prevent infinite tool-dispatch loops by terminating dispatch when the model requests the exact same tool invocation repeatedly.
