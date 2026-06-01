@@ -17,6 +17,9 @@
 //!    model should see. Multiple retries of the same fingerprint collapse to
 //!    a single canonical entry; the host stays in control of how many
 //!    physical retries actually happened.
+//! 4. [`StuckLoopHook`] — a [`ToolDispatchHook`] that tracks invocation
+//!    fingerprints and terminates dispatch if the model requests identical
+//!    calls too many times, preventing runaway costs.
 //!
 //! These primitives are intentionally synchronous and infallible: they
 //! operate on already-materialized invocations and outcomes, never on live
@@ -49,12 +52,17 @@
 //! assert!(matches!(repaired[0], HistoryEntry::Completed { .. }));
 //! ```
 
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::Mutex;
 
+use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::normalizer::{ToolInvocation, ToolInvocationResult};
+use crate::normalizer::{
+    ToolDispatchAction, ToolDispatchHook, ToolInvocation, ToolInvocationResult,
+};
 use crate::registry::KernelError;
 
 // ── Retry classification ─────────────────────────────────────────────────────
@@ -163,6 +171,59 @@ fn canonicalize_value(value: &Value) -> Value {
             Value::Object(out)
         }
         other => other.clone(),
+    }
+}
+
+// ── Stuck loop detection ───────────────────────────────────────────────────
+
+/// A dispatch hook that cuts off repeated identical tool calls.
+///
+/// Models sometimes enter a stuck loop where they repeatedly dispatch the
+/// exact same tool invocation (same tool name, same arguments) without
+/// making progress. This hook tracks invocation fingerprints across
+/// dispatches and terminates the loop if the same fingerprint is invoked
+/// more than `max_identical_calls` times.
+pub struct StuckLoopHook {
+    max_identical_calls: usize,
+    counts: Mutex<HashMap<ToolCallFingerprint, usize>>,
+}
+
+impl StuckLoopHook {
+    /// Create a new hook that terminates dispatch if any fingerprint
+    /// is requested more than `max_identical_calls` times.
+    pub fn new(max_identical_calls: usize) -> Self {
+        Self {
+            max_identical_calls,
+            counts: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl ToolDispatchHook for StuckLoopHook {
+    async fn before_invocation(
+        &self,
+        invocation: &ToolInvocation,
+    ) -> Result<ToolDispatchAction, KernelError> {
+        let fingerprint = invocation.fingerprint();
+        let mut counts = self
+            .counts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let count = counts.entry(fingerprint).or_insert(0);
+        *count = count.saturating_add(1);
+
+        if *count > self.max_identical_calls {
+            Ok(ToolDispatchAction::Terminate {
+                reason: format!(
+                    "stuck loop detected: `{}` has been called {} times",
+                    invocation.name, count
+                ),
+            })
+        } else {
+            Ok(ToolDispatchAction::Continue)
+        }
     }
 }
 
@@ -483,5 +544,59 @@ mod tests {
             }
             other => panic!("expected Failed, got {other:?}"),
         }
+    }
+
+    // ── Stuck loop detection tests ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn stuck_loop_terminates_after_threshold() {
+        let hook = StuckLoopHook::new(2);
+        let i = inv("search", json!({"q": "rig"}));
+
+        // First call: allowed
+        let action = hook.before_invocation(&i).await.unwrap();
+        assert!(matches!(action, ToolDispatchAction::Continue));
+
+        // Second call: allowed
+        let action = hook.before_invocation(&i).await.unwrap();
+        assert!(matches!(action, ToolDispatchAction::Continue));
+
+        // Third call: terminated
+        let action = hook.before_invocation(&i).await.unwrap();
+        match action {
+            ToolDispatchAction::Terminate { reason } => {
+                assert!(reason.contains("stuck loop detected"));
+                assert!(reason.contains("3 times"));
+            }
+            other => panic!("expected Terminate, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn stuck_loop_tracks_multiple_distinct_tools() {
+        let hook = StuckLoopHook::new(1);
+        let i1 = inv("search", json!({"q": "1"}));
+        let i2 = inv("search", json!({"q": "2"}));
+
+        assert!(matches!(
+            hook.before_invocation(&i1).await.unwrap(),
+            ToolDispatchAction::Continue
+        ));
+        assert!(matches!(
+            hook.before_invocation(&i2).await.unwrap(),
+            ToolDispatchAction::Continue
+        ));
+
+        // Calling i1 again triggers termination
+        assert!(matches!(
+            hook.before_invocation(&i1).await.unwrap(),
+            ToolDispatchAction::Terminate { .. }
+        ));
+
+        // Calling i2 again triggers termination
+        assert!(matches!(
+            hook.before_invocation(&i2).await.unwrap(),
+            ToolDispatchAction::Terminate { .. }
+        ));
     }
 }

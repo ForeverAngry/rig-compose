@@ -35,7 +35,7 @@ It must stay independent from `rig-core`, Memvid, MCP, concrete resource stores,
 	memory-like, resource-like, and tool-result-like examples, but downstream
 	crates still need to project concrete memory, resource, graph, and lineage
 	data into it.
-- Dispatch and agent lifecycle policy have hooks and budget accounting, but richer approval, retry, result-size, stuck-loop, and trace policies still live downstream or remain unbuilt.
+- Dispatch and agent lifecycle policy have hooks and budget accounting, but richer approval and trace policies still live downstream or remain unbuilt.
 
 ## Next Work
 
