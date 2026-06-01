@@ -97,8 +97,8 @@ pub use normalizer::{
 };
 pub use registry::{KernelError, SkillDescriptor, SkillRegistry, ToolRegistry};
 pub use reliability::{
-    DefaultRetryClassifier, HistoryEntry, RetryClass, RetryClassifier, ToolCallFingerprint,
-    repair_history,
+    DefaultRetryClassifier, HistoryEntry, RetryClass, RetryClassifier, StuckLoopHook,
+    ToolCallFingerprint, repair_history,
 };
 pub use skill::{Skill, SkillId, SkillOutcome};
 pub use tool::{
